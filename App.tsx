@@ -1,5 +1,5 @@
-import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -7,40 +7,59 @@ import {
   Text,
   TextInput,
   View,
-} from "react-native";
-import { formatWeight, parseWeightInput, type WeightEntry } from "./src/weight";
-import { TodayScreen } from "./src/TodayScreen";
-import { palette } from "./src/theme";
+} from 'react-native';
+import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
+import { TodayScreen } from './src/TodayScreen';
+import { readTodaySteps } from './src/healthConnect';
+import { palette } from './src/theme';
 
-type Tab = "today" | "weight";
+type Tab = 'today' | 'weight';
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("today");
+  const [tab, setTab] = useState<Tab>('today');
   const [steps, setSteps] = useState(4210);
-  const [stepsInput, setStepsInput] = useState("");
-  const [input, setInput] = useState("");
+  const [stepsInput, setStepsInput] = useState('');
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [input, setInput] = useState('');
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   function record() {
     const kg = parseWeightInput(input);
     if (kg === null) {
-      setError("kgの数字を入力してください（小数点2位まで）。");
+      setError('kgの数字を入力してください（小数点2位まで）。');
       return;
     }
     setEntries((prev) => [
       { id: String(Date.now()), kg, recordedAt: new Date() },
       ...prev,
     ]);
-    setInput("");
+    setInput('');
     setError(null);
   }
 
+  async function syncFromHealthConnect() {
+    setSyncMessage('Health Connectから取得しています…');
+    const result = await readTodaySteps();
+    if (result.ok) {
+      setSteps(result.steps);
+      setSyncMessage(null);
+      return;
+    }
+    const text =
+      result.reason === 'denied'
+        ? '歩数の読み取りが許可されていません。下の欄から手入力できます。'
+        : result.reason === 'unsupported'
+          ? 'このデバイスでは使えません。下の欄から手入力できます。'
+          : 'Health Connectから取得できませんでした。下の欄から手入力できます。';
+    setSyncMessage(text);
+  }
+
   function applySteps() {
-    const n = Number(stepsInput.replace(/,/g, ""));
+    const n = Number(stepsInput.replace(/,/g, ''));
     if (!Number.isInteger(n) || n < 0 || n > 100000) return;
     setSteps(n);
-    setStepsInput("");
+    setStepsInput('');
   }
 
   return (
@@ -48,26 +67,26 @@ export default function App() {
       <StatusBar style="dark" />
       <View style={styles.tabs}>
         <Pressable
-          onPress={() => setTab("today")}
+          onPress={() => setTab('today')}
           accessibilityRole="tab"
-          style={[styles.tab, tab === "today" && styles.tabOn]}
+          style={[styles.tab, tab === 'today' && styles.tabOn]}
         >
-          <Text style={[styles.tabText, tab === "today" && styles.tabTextOn]}>
+          <Text style={[styles.tabText, tab === 'today' && styles.tabTextOn]}>
             今日
           </Text>
         </Pressable>
         <Pressable
-          onPress={() => setTab("weight")}
+          onPress={() => setTab('weight')}
           accessibilityRole="tab"
-          style={[styles.tab, tab === "weight" && styles.tabOn]}
+          style={[styles.tab, tab === 'weight' && styles.tabOn]}
         >
-          <Text style={[styles.tabText, tab === "weight" && styles.tabTextOn]}>
+          <Text style={[styles.tabText, tab === 'weight' && styles.tabTextOn]}>
             体重
           </Text>
         </Pressable>
       </View>
 
-      {tab === "today" ? (
+      {tab === 'today' ? (
         <>
           <TodayScreen steps={steps} />
           <View style={styles.form}>
@@ -89,9 +108,14 @@ export default function App() {
               <Text style={styles.ctaText}>反映</Text>
             </Pressable>
           </View>
-          <Text style={styles.muted}>
-            歩数は手入力です。ウェアラブルとの連携は次の作業で入れます。
-          </Text>
+          <Pressable
+            style={styles.smallBtn}
+            onPress={syncFromHealthConnect}
+            accessibilityRole="button"
+          >
+            <Text style={styles.ctaText}>Health Connectから取得</Text>
+          </Pressable>
+          {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
         </>
       ) : (
         <>
@@ -132,7 +156,7 @@ export default function App() {
             renderItem={({ item }) => (
               <View style={styles.row}>
                 <Text style={styles.rowDate}>
-                  {item.recordedAt.toLocaleDateString("ja-JP")}
+                  {item.recordedAt.toLocaleDateString('ja-JP')}
                 </Text>
                 <Text style={styles.rowValue}>{formatWeight(item.kg)} kg</Text>
               </View>
@@ -155,12 +179,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: "800",
+    fontWeight: '800',
     color: palette.fg,
   },
   form: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   input: {
@@ -172,36 +196,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 28,
-    fontWeight: "800",
+    fontWeight: '800',
     color: palette.fg,
-    fontVariant: ["tabular-nums"],
+    fontVariant: ['tabular-nums'],
   },
   unit: {
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: '700',
     color: palette.muted,
   },
   error: {
-    color: "#B5523B",
+    color: '#B5523B',
     fontSize: 13,
   },
   cta: {
     backgroundColor: palette.accent,
     borderRadius: 999,
     paddingVertical: 14,
-    alignItems: "center",
+    alignItems: 'center',
   },
   ctaText: {
-    color: "#FFFFFF",
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: '800',
   },
   list: {
     flex: 1,
   },
   row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     backgroundColor: palette.surface,
     borderRadius: 16,
     padding: 14,
@@ -214,23 +238,23 @@ const styles = StyleSheet.create({
   rowValue: {
     color: palette.fg,
     fontSize: 16,
-    fontWeight: "700",
-    fontVariant: ["tabular-nums"],
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   muted: {
     color: palette.muted,
-    textAlign: "center",
+    textAlign: 'center',
     marginTop: 24,
   },
   tabs: {
-    flexDirection: "row",
+    flexDirection: 'row',
     backgroundColor: palette.line,
     borderRadius: 999,
     padding: 4,
   },
   tab: {
     flex: 1,
-    alignItems: "center",
+    alignItems: 'center',
     paddingVertical: 8,
     borderRadius: 999,
   },
@@ -239,7 +263,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     color: palette.muted,
-    fontWeight: "700",
+    fontWeight: '700',
   },
   tabTextOn: {
     color: palette.fg,

@@ -1,6 +1,6 @@
-import { StyleSheet, Text, View } from "react-native";
-import Svg, { Circle } from "react-native-svg";
-import { palette } from "./theme";
+import { StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
+import { palette } from './theme';
 
 export const STEP_GOAL = 8000;
 
@@ -43,9 +43,9 @@ export function TodayScreen({ steps }: Props) {
           />
         </Svg>
         <View style={styles.center}>
-          <Text style={styles.steps}>{steps.toLocaleString("ja-JP")}</Text>
+          <Text style={styles.steps}>{steps.toLocaleString('ja-JP')}</Text>
           <Text style={styles.sub}>
-            歩 ／ 目標 {STEP_GOAL.toLocaleString("ja-JP")}歩
+            歩 ／ 目標 {STEP_GOAL.toLocaleString('ja-JP')}歩
           </Text>
         </View>
       </View>
@@ -58,33 +58,33 @@ export function TodayScreen({ steps }: Props) {
 const styles = StyleSheet.create({
   wrap: {
     flex: 1,
-    alignItems: "center",
+    alignItems: 'center',
     gap: 16,
   },
   title: {
-    alignSelf: "stretch",
+    alignSelf: 'stretch',
     fontSize: 22,
-    fontWeight: "800",
+    fontWeight: '800',
     color: palette.fg,
   },
   ringBox: {
     width: 200,
     height: 200,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   svg: {
-    position: "absolute",
-    transform: [{ rotate: "-90deg" }],
+    position: 'absolute',
+    transform: [{ rotate: '-90deg' }],
   },
   center: {
-    alignItems: "center",
+    alignItems: 'center',
   },
   steps: {
     fontSize: 36,
-    fontWeight: "800",
+    fontWeight: '800',
     color: palette.fg,
-    fontVariant: ["tabular-nums"],
+    fontVariant: ['tabular-nums'],
   },
   sub: {
     fontSize: 12,
@@ -94,6 +94,6 @@ const styles = StyleSheet.create({
   percent: {
     fontSize: 15,
     color: palette.fg,
-    fontWeight: "700",
+    fontWeight: '700',
   },
 });
