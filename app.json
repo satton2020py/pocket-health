@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "tmp-app",
-    "slug": "tmp-app",
+    "name": "ポケットヘルス",
+    "slug": "pocket-health",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
