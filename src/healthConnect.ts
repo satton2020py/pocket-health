@@ -9,7 +9,7 @@ import {
 
 export type StepsResult =
   | { ok: true; steps: number }
-  | { ok: false; reason: 'unsupported' | 'unavailable' | 'denied' | 'error' };
+  | { ok: false; reason: 'unsupported' | 'unavailable' | 'denied' | 'error'; detail?: string };
 
 // Reads today's steps (local midnight to now) from Health Connect.
 // Any failure returns a reason so the screen can fall back to manual entry.
@@ -19,10 +19,10 @@ export async function readTodaySteps(): Promise<StepsResult> {
   try {
     const status = await getSdkStatus();
     if (status !== SdkAvailabilityStatus.SDK_AVAILABLE) {
-      return { ok: false, reason: 'unavailable' };
+      return { ok: false, reason: 'unavailable', detail: `status=${status}` };
     }
     const initialized = await initialize();
-    if (!initialized) return { ok: false, reason: 'unavailable' };
+    if (!initialized) return { ok: false, reason: 'unavailable', detail: 'initialize=false' };
 
     const granted = await requestPermission([
       { accessType: 'read', recordType: 'Steps' },
@@ -43,7 +43,7 @@ export async function readTodaySteps(): Promise<StepsResult> {
     });
     const steps = records.reduce((sum, r) => sum + r.count, 0);
     return { ok: true, steps };
-  } catch {
-    return { ok: false, reason: 'error' };
+  } catch (e) {
+    return { ok: false, reason: 'error', detail: String((e as Error)?.message ?? e) };
   }
 }

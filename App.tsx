@@ -52,7 +52,7 @@ export default function App() {
         : result.reason === 'unsupported'
           ? 'このデバイスでは使えません。下の欄から手入力できます。'
           : 'Health Connectから取得できませんでした。下の欄から手入力できます。';
-    setSyncMessage(text);
+    setSyncMessage(result.detail ? `${text}（${result.detail}）` : text);
   }
 
   function applySteps() {
