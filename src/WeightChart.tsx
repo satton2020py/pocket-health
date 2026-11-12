@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import Svg, { Circle, Line, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 import { palette } from './theme';
 import { formatWeight, type WeightEntry } from './weight';
+import { forecastGoal } from './trend';
 
 type Props = {
   entries: WeightEntry[];
@@ -111,6 +112,8 @@ export function WeightChart({ entries, goalKg }: Props) {
   const first = visible[0];
   const last = visible[visible.length - 1];
   const change = last.kg - first.kg;
+  // Forecast uses all records (its own 30-day window), not just the selected period.
+  const forecast = forecastGoal(entries, goalKg);
 
   return (
     <View style={styles.wrap}>
@@ -225,6 +228,17 @@ export function WeightChart({ entries, goalKg }: Props) {
           <Text style={styles.sub}>赤い点線は目標体重 {formatWeight(goalKg)} kg です。</Text>
         ) : null}
       </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>目標までの予測</Text>
+        {forecast.slopePerWeek !== null ? (
+          <Text style={styles.sub}>
+            直近30日の傾向: 週 {forecast.slopePerWeek >= 0 ? '+' : ''}
+            {formatWeight(forecast.slopePerWeek)} kg
+          </Text>
+        ) : null}
+        <Text style={styles.sub}>{forecast.message}</Text>
+      </View>
     </View>
   );
 }
@@ -249,6 +263,11 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontSize: 13,
     padding: 4,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: palette.fg,
   },
   tabs: {
     flexDirection: 'row',

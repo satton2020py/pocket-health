@@ -1,0 +1,93 @@
+export type TrendPoint = { kg: number; recordedAt: Date };
+
+export type Forecast = {
+  // Kilograms per week. Negative means losing weight. Null when there is too little data.
+  slopePerWeek: number | null;
+  // Trend line value at the given time.
+  trendNowKg: number | null;
+  // Date the trend is expected to reach the goal, or null when it will not.
+  reachDate: Date | null;
+  // A short Japanese sentence for the screen.
+  message: string;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WINDOW_DAYS = 30;
+const MIN_POINTS = 3;
+const MIN_SPAN_DAYS = 7;
+
+// Fits a straight line through the recent weights (least squares) and estimates
+// when that line reaches the goal. It uses the trend, not the single latest value,
+// so one noisy weigh-in does not move the forecast much.
+export function forecastGoal(
+  points: TrendPoint[],
+  goalKg: number | null,
+  now: Date = new Date(),
+): Forecast {
+  const cutoff = now.getTime() - WINDOW_DAYS * DAY_MS;
+  const recent = points
+    .filter((p) => p.recordedAt.getTime() >= cutoff && p.recordedAt.getTime() <= now.getTime())
+    .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+
+  const none = (message: string): Forecast => ({
+    slopePerWeek: null,
+    trendNowKg: null,
+    reachDate: null,
+    message,
+  });
+
+  if (recent.length < MIN_POINTS) {
+    return none(`予測には、直近${WINDOW_DAYS}日で3回以上の記録が必要です。`);
+  }
+  const t0 = recent[0].recordedAt.getTime();
+  const spanDays = (recent[recent.length - 1].recordedAt.getTime() - t0) / DAY_MS;
+  if (spanDays < MIN_SPAN_DAYS) {
+    return none('記録の期間が短いため、予測はまだできません。');
+  }
+
+  // x = days since the first record, y = kg.
+  const xs = recent.map((p) => (p.recordedAt.getTime() - t0) / DAY_MS);
+  const ys = recent.map((p) => p.kg);
+  const n = xs.length;
+  const meanX = xs.reduce((s, x) => s + x, 0) / n;
+  const meanY = ys.reduce((s, y) => s + y, 0) / n;
+  let sxx = 0;
+  let sxy = 0;
+  for (let i = 0; i < n; i++) {
+    sxx += (xs[i] - meanX) ** 2;
+    sxy += (xs[i] - meanX) * (ys[i] - meanY);
+  }
+  const slopePerDay = sxx === 0 ? 0 : sxy / sxx;
+  const intercept = meanY - slopePerDay * meanX;
+  const nowX = (now.getTime() - t0) / DAY_MS;
+  const trendNowKg = intercept + slopePerDay * nowX;
+  const slopePerWeek = slopePerDay * 7;
+
+  if (goalKg === null) {
+    return { slopePerWeek, trendNowKg, reachDate: null, message: '目標体重を設定すると、到達予定日を表示します。' };
+  }
+  if (trendNowKg <= goalKg) {
+    return { slopePerWeek, trendNowKg, reachDate: now, message: '目標体重に到達しています。' };
+  }
+  if (slopePerDay >= -0.001) {
+    return {
+      slopePerWeek,
+      trendNowKg,
+      reachDate: null,
+      message: '今の傾向では、目標体重に近づいていません。',
+    };
+  }
+
+  const daysLeft = (trendNowKg - goalKg) / -slopePerDay;
+  // Cap the forecast at two years so a very flat trend does not show a silly date.
+  if (daysLeft > 730) {
+    return { slopePerWeek, trendNowKg, reachDate: null, message: '到達は2年以上先になる見込みです。' };
+  }
+  const reachDate = new Date(now.getTime() + daysLeft * DAY_MS);
+  return {
+    slopePerWeek,
+    trendNowKg,
+    reachDate,
+    message: `このペースなら、約${Math.round(daysLeft)}日後（${reachDate.toLocaleDateString('ja-JP')}頃）に目標に届く見込みです。`,
+  };
+}
