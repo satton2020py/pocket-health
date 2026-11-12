@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   FlatList,
   ScrollView,
@@ -19,7 +19,6 @@ type Tab = 'today' | 'weight';
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
   const [steps, setSteps] = useState(4210);
-  const [stepsInput, setStepsInput] = useState('');
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<WeightEntry[]>([]);
@@ -49,19 +48,16 @@ export default function App() {
     }
     const text =
       result.reason === 'denied'
-        ? '歩数の読み取りが許可されていません。下の欄から手入力できます。'
+        ? '歩数の読み取りが許可されていません。'
         : result.reason === 'unsupported'
-          ? 'このデバイスでは使えません。下の欄から手入力できます。'
-          : 'Health Connectから取得できませんでした。下の欄から手入力できます。';
+          ? 'このデバイスでは使えません。'
+          : 'Health Connectから取得できませんでした。';
     setSyncMessage(result.detail ? `${text}（${result.detail}）` : text);
   }
 
-  function applySteps() {
-    const n = Number(stepsInput.replace(/,/g, ''));
-    if (!Number.isInteger(n) || n < 0 || n > 100000) return;
-    setSteps(n);
-    setStepsInput('');
-  }
+  useEffect(() => {
+    syncFromHealthConnect();
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -95,28 +91,9 @@ export default function App() {
             onPress={syncFromHealthConnect}
             accessibilityRole="button"
           >
-            <Text style={styles.ctaText}>Health Connectから取得</Text>
+            <Text style={styles.ctaText}>Health Connectから再取得</Text>
           </Pressable>
           {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
-          <View style={styles.form}>
-            <TextInput
-              style={[styles.input, { fontSize: 18 }]}
-              value={stepsInput}
-              onChangeText={setStepsInput}
-              onSubmitEditing={applySteps}
-              keyboardType="number-pad"
-              placeholder="歩数を入力"
-              placeholderTextColor={palette.muted}
-              accessibilityLabel="歩数"
-            />
-            <Pressable
-              style={styles.smallBtn}
-              onPress={applySteps}
-              accessibilityRole="button"
-            >
-              <Text style={styles.ctaText}>反映</Text>
-            </Pressable>
-          </View>
         </ScrollView>
       ) : (
         <>
