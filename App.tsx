@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
   FlatList,
+  ScrollView,
   Pressable,
   StyleSheet,
   Text,
@@ -87,7 +88,7 @@ export default function App() {
       </View>
 
       {tab === 'today' ? (
-        <>
+        <ScrollView contentContainerStyle={{ gap: 16 }}>
           <TodayScreen steps={steps} />
           {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
           <View style={styles.form}>
@@ -116,7 +117,7 @@ export default function App() {
           >
             <Text style={styles.ctaText}>Health Connectから取得</Text>
           </Pressable>
-        </>
+        </ScrollView>
       ) : (
         <>
           <Text style={styles.title}>体重を記録</Text>
