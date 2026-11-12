@@ -30,7 +30,12 @@ export async function readTodaySteps(): Promise<StepsResult> {
     const canReadSteps = granted.some(
       (p) => p.accessType === 'read' && p.recordType === 'Steps',
     );
-    if (!canReadSteps) return { ok: false, reason: 'denied' };
+    if (!canReadSteps)
+      return {
+        ok: false,
+        reason: 'denied',
+        detail: `status=${status} granted=${JSON.stringify(granted)}`,
+      };
 
     const start = new Date();
     start.setHours(0, 0, 0, 0);
