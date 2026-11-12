@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   ScrollView,
@@ -17,7 +18,7 @@ import { GoalScreen } from './src/GoalScreen';
 import { WeightChart } from './src/WeightChart';
 import { readRecentSteps, type DailySteps } from './src/healthConnect';
 import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
-import { loadWeights, saveWeight } from './src/weightStore';
+import { deleteWeight, loadWeights, saveWeight } from './src/weightStore';
 import { loadGoals, saveGoals } from './src/goalStore';
 import type { User } from '@react-native-firebase/auth';
 import { palette } from './src/theme';
@@ -91,6 +92,23 @@ export default function App() {
       if (signed) setUser(signed);
     } catch {
       setError('ログインできませんでした。もう一度お試しください。');
+    }
+  }
+
+  // Asks first, because a mistyped weight is easy to tap by accident.
+  function confirmRemove(id: string) {
+    Alert.alert('この記録を削除しますか？', '削除すると元に戻せません。', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '削除', style: 'destructive', onPress: () => removeEntry(id) },
+    ]);
+  }
+
+  async function removeEntry(id: string) {
+    try {
+      if (user) await deleteWeight(user.uid, id);
+      setEntries((prev) => prev.filter((e) => e.id !== id));
+    } catch {
+      setError('削除できませんでした。もう一度お試しください。');
     }
   }
 
@@ -278,7 +296,17 @@ export default function App() {
                     minute: '2-digit',
                   })}
                 </Text>
-                <Text style={styles.rowValue}>{formatWeight(item.kg)} kg</Text>
+                <View style={styles.rowRight}>
+                  <Text style={styles.rowValue}>{formatWeight(item.kg)} kg</Text>
+                  <Pressable
+                    onPress={() => confirmRemove(item.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel="この記録を削除"
+                    hitSlop={8}
+                  >
+                    <Text style={styles.deleteText}>削除</Text>
+                  </Pressable>
+                </View>
               </View>
             )}
           />
@@ -354,6 +382,16 @@ const styles = StyleSheet.create({
   rowDate: {
     color: palette.muted,
     fontSize: 14,
+  },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  deleteText: {
+    color: palette.muted,
+    fontSize: 13,
+    fontWeight: '700',
   },
   rowValue: {
     color: palette.fg,

@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   getFirestore,
@@ -20,6 +21,10 @@ export async function saveWeight(uid: string, kg: number): Promise<void> {
     kg,
     recordedAt: Timestamp.fromDate(new Date()),
   });
+}
+
+export async function deleteWeight(uid: string, id: string): Promise<void> {
+  await deleteDoc(doc(weightsCollection(uid), id));
 }
 
 export async function loadWeights(uid: string): Promise<WeightEntry[]> {
