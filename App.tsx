@@ -131,7 +131,7 @@ export default function App() {
       </View>
 
       {tab === 'today' ? (
-        <ScrollView contentContainerStyle={{ gap: 16 }}>
+        <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
           <TodayScreen steps={steps} />
           <Pressable
             style={styles.smallBtn}
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.bg,
     paddingTop: 72,
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 40,
     gap: 16,
   },
   title: {
