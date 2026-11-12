@@ -19,6 +19,7 @@ import { WeightChart } from './src/WeightChart';
 import { readRecentSteps, type DailySteps } from './src/healthConnect';
 import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
 import { deleteWeight, loadWeights, saveWeight } from './src/weightStore';
+import { loadLocalWeights, saveLocalWeights } from './src/localWeights';
 import { loadGoals, saveGoals } from './src/goalStore';
 import type { User } from '@react-native-firebase/auth';
 import { palette } from './src/theme';
@@ -46,12 +47,21 @@ export default function App() {
 
   useEffect(() => onUserChanged(setUser), []);
 
+  // When signed out, show the records kept on this phone.
+  useEffect(() => {
+    if (user) return;
+    loadLocalWeights().then((local) => {
+      if (local.length > 0) setEntries(local);
+    });
+  }, [user]);
+
   // When someone signs in, move the phone-only entries to the cloud and show the cloud list.
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
         for (const e of entries) await saveWeight(user.uid, e.kg);
+        await saveLocalWeights([]);
         setEntries(await loadWeights(user.uid));
         const saved = await loadGoals(user.uid);
         if (saved) {
@@ -105,8 +115,14 @@ export default function App() {
 
   async function removeEntry(id: string) {
     try {
-      if (user) await deleteWeight(user.uid, id);
-      setEntries((prev) => prev.filter((e) => e.id !== id));
+      if (user) {
+        await deleteWeight(user.uid, id);
+        setEntries((prev) => prev.filter((e) => e.id !== id));
+      } else {
+        const next = entries.filter((e) => e.id !== id);
+        setEntries(next);
+        await saveLocalWeights(next);
+      }
     } catch {
       setError('削除できませんでした。もう一度お試しください。');
     }
@@ -135,10 +151,12 @@ export default function App() {
       }
       return;
     }
-    setEntries((prev) => [
+    const next = [
       { id: String(Date.now()), kg, recordedAt: new Date() },
-      ...prev,
-    ]);
+      ...entries,
+    ];
+    setEntries(next);
+    await saveLocalWeights(next);
   }
 
   async function syncFromHealthConnect() {
