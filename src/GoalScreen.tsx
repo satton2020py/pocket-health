@@ -1,19 +1,37 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { palette } from './theme';
-import { STEP_GOAL } from './TodayScreen';
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
 
 type Props = {
   goalKg: number | null;
   latest: WeightEntry | null;
   onSetGoal: (kg: number | null) => void;
+  stepGoal: number;
+  onSetStepGoal: (steps: number) => void;
 };
 
-// Lets the user set a target weight and shows how far they are from it.
-export function GoalScreen({ goalKg, latest, onSetGoal }: Props) {
+// Parses a whole-number step goal. Returns null when it is not a sensible value.
+function parseStepGoal(raw: string): number | null {
+  const normalized = raw.trim().replace(/,/g, '');
+  if (!/^\d{4,6}$/.test(normalized)) return null;
+  const steps = Number(normalized);
+  if (steps < 1000 || steps > 100000) return null;
+  return steps;
+}
+
+// Lets the user set a target weight and a daily step goal.
+export function GoalScreen({
+  goalKg,
+  latest,
+  onSetGoal,
+  stepGoal,
+  onSetStepGoal,
+}: Props) {
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [stepInput, setStepInput] = useState('');
+  const [stepError, setStepError] = useState<string | null>(null);
 
   function save() {
     const kg = parseWeightInput(input);
@@ -24,6 +42,17 @@ export function GoalScreen({ goalKg, latest, onSetGoal }: Props) {
     setError(null);
     setInput('');
     onSetGoal(kg);
+  }
+
+  function saveSteps() {
+    const steps = parseStepGoal(stepInput);
+    if (steps === null) {
+      setStepError('1,000〜100,000歩の数字を入力してください。');
+      return;
+    }
+    setStepError(null);
+    setStepInput('');
+    onSetStepGoal(steps);
   }
 
   const remaining =
@@ -81,8 +110,32 @@ export function GoalScreen({ goalKg, latest, onSetGoal }: Props) {
 
       <View style={styles.card}>
         <Text style={styles.label}>1日の歩数目標</Text>
-        <Text style={styles.value}>{STEP_GOAL.toLocaleString('ja-JP')} 歩</Text>
-        <Text style={styles.sub}>今はアプリで固定しています。</Text>
+        <Text style={styles.value}>{stepGoal.toLocaleString('ja-JP')} 歩</Text>
+
+        <View style={styles.form}>
+          <TextInput
+            style={styles.input}
+            value={stepInput}
+            onChangeText={(text) => {
+              setStepInput(text);
+              setStepError(null);
+            }}
+            keyboardType="number-pad"
+            placeholder="例: 10000"
+            placeholderTextColor={palette.muted}
+            accessibilityLabel="1日の歩数目標"
+          />
+          <Text style={styles.unit}>歩</Text>
+        </View>
+        {stepError ? <Text style={styles.error}>{stepError}</Text> : null}
+
+        <Pressable
+          style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
+          onPress={saveSteps}
+          accessibilityRole="button"
+        >
+          <Text style={styles.ctaText}>歩数目標を変える</Text>
+        </Pressable>
       </View>
 
       <Text style={styles.sub}>睡眠の目標は次の段階で追加します。</Text>

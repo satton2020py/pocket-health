@@ -2,15 +2,16 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { palette } from './theme';
 
-export const STEP_GOAL = 8000;
+export const DEFAULT_STEP_GOAL = 8000;
 
 type Props = {
   steps: number;
+  stepGoal: number;
 };
 
 // Shows today's steps as a ring against the daily goal.
-export function TodayScreen({ steps }: Props) {
-  const ratio = Math.min(steps / STEP_GOAL, 1);
+export function TodayScreen({ steps, stepGoal }: Props) {
+  const ratio = Math.min(steps / stepGoal, 1);
   const percent = Math.round(ratio * 100);
   const size = 200;
   const stroke = 14;
@@ -45,7 +46,7 @@ export function TodayScreen({ steps }: Props) {
         <View style={styles.center}>
           <Text style={styles.steps}>{steps.toLocaleString('ja-JP')}</Text>
           <Text style={styles.sub}>
-            歩 ／ 目標 {STEP_GOAL.toLocaleString('ja-JP')}歩
+            歩 ／ 目標 {stepGoal.toLocaleString('ja-JP')}歩
           </Text>
         </View>
       </View>

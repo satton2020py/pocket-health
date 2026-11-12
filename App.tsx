@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
-import { TodayScreen } from './src/TodayScreen';
+import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
 import { GoalScreen } from './src/GoalScreen';
 import { WeightChart } from './src/WeightChart';
 import { readTodaySteps } from './src/healthConnect';
@@ -30,6 +30,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   // Target weight. Kept in memory for now, so it resets when the app restarts.
   const [goalKg, setGoalKg] = useState<number | null>(null);
+  // Daily step goal. Also kept in memory for now.
+  const [stepGoal, setStepGoal] = useState(DEFAULT_STEP_GOAL);
 
   const [user, setUser] = useState<User | null>(null);
 
@@ -159,7 +161,7 @@ export default function App() {
 
       {tab === 'today' ? (
         <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
-          <TodayScreen steps={steps} />
+          <TodayScreen steps={steps} stepGoal={stepGoal} />
           <Pressable
             style={styles.smallBtn}
             onPress={syncFromHealthConnect}
@@ -175,6 +177,8 @@ export default function App() {
             goalKg={goalKg}
             latest={latestEntry}
             onSetGoal={setGoalKg}
+            stepGoal={stepGoal}
+            onSetStepGoal={setStepGoal}
           />
         </ScrollView>
       ) : tab === 'graph' ? (
