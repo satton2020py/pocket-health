@@ -2,7 +2,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import {
   FlatList,
+  KeyboardAvoidingView,
   ScrollView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -118,7 +120,10 @@ export default function App() {
   }, []);
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <StatusBar style="dark" />
       <View style={styles.tabs}>
         <Pressable
@@ -172,7 +177,10 @@ export default function App() {
           {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
         </ScrollView>
       ) : tab === 'goal' ? (
-        <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
+        <ScrollView
+          contentContainerStyle={{ gap: 16, paddingBottom: 32 }}
+          keyboardShouldPersistTaps="handled"
+        >
           <GoalScreen
             goalKg={goalKg}
             latest={latestEntry}
@@ -244,7 +252,7 @@ export default function App() {
           />
         </>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
