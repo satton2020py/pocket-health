@@ -244,7 +244,13 @@ export default function App() {
             renderItem={({ item }) => (
               <View style={styles.row}>
                 <Text style={styles.rowDate}>
-                  {item.recordedAt.toLocaleDateString('ja-JP')}
+                  {item.recordedAt.toLocaleString('ja-JP', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                 </Text>
                 <Text style={styles.rowValue}>{formatWeight(item.kg)} kg</Text>
               </View>
