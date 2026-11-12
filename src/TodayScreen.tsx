@@ -13,7 +13,11 @@ type Props = {
   sources: StepSource[];
   chosen: string | null;
   onSelectSource: (origin: string) => void;
+  sleep: { hours: number; start: Date; end: Date } | null;
+  sleepMessage: string | null;
 };
+
+const clock = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 // Friendly name for an app's package name. Unknown apps show their last package part.
 function sourceLabel(origin: string): string {
@@ -39,6 +43,8 @@ export function TodayScreen({
   sources,
   chosen,
   onSelectSource,
+  sleep,
+  sleepMessage,
 }: Props) {
   // The ring stops at a full circle, but the percentage keeps counting past 100%.
   const ratio = Math.min(steps / stepGoal, 1);
@@ -95,6 +101,20 @@ export function TodayScreen({
       </View>
 
       <Text style={styles.percent}>目標の {percent}%</Text>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>昨夜の睡眠</Text>
+        {sleep ? (
+          <>
+            <Text style={styles.sleepValue}>{sleep.hours.toFixed(1)} 時間</Text>
+            <Text style={styles.sub}>
+              {clock(sleep.start)} 〜 {clock(sleep.end)}
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.sub}>{sleepMessage ?? '読み込み中…'}</Text>
+        )}
+      </View>
       {chosen ? (
         <Text style={styles.sub}>歩数のデータ元: {sourceLabel(chosen)}</Text>
       ) : null}
@@ -235,6 +255,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: palette.muted,
     marginTop: 4,
+  },
+  sleepValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: palette.fg,
+    fontVariant: ['tabular-nums'],
   },
   percent: {
     fontSize: 15,

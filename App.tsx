@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
+import { readLastNightSleep } from './src/sleep';
+import { applyReminder, DEFAULT_REMINDER, loadReminder, type Reminder } from './src/reminder';
 import { GoalScreen } from './src/GoalScreen';
 import { WeightChart } from './src/WeightChart';
 import { readRecentSteps, type DailySteps, type StepSource } from './src/healthConnect';
@@ -34,6 +36,10 @@ export default function App() {
   const [sources, setSources] = useState<StepSource[]>([]);
   const [stepSource, setStepSource] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [sleep, setSleep] = useState<{ hours: number; start: Date; end: Date } | null>(null);
+  const [sleepMessage, setSleepMessage] = useState<string | null>(null);
+  const [reminder, setReminder] = useState<Reminder>(DEFAULT_REMINDER);
+  const [reminderNote, setReminderNote] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -175,8 +181,40 @@ export default function App() {
   }
 
   // Picks which app's steps to use, then re-reads. Only one app is used, so nothing is double counted.
+  // Reads last night's sleep. Shown separately, so a sleep problem never hides the steps.
+  async function syncSleep() {
+    const r = await readLastNightSleep();
+    if (r.ok) {
+      setSleep(r.night);
+      setSleepMessage(r.night ? null : '昨夜の睡眠記録はありません。');
+      return;
+    }
+    setSleep(null);
+    setSleepMessage(
+      r.reason === 'denied'
+        ? '睡眠の読み取りが許可されていません。'
+        : '睡眠を取得できませんでした。',
+    );
+  }
+
+  // Turns the reminder on or off and sets its time. Shows a note when the phone refuses notifications.
+  async function changeReminder(r: Reminder) {
+    setReminder(r);
+    setReminderNote(null);
+    try {
+      const ok = await applyReminder(r);
+      if (!ok) {
+        setReminder({ ...r, enabled: false });
+        setReminderNote('通知が許可されていないため、リマインダーを設定できません。');
+      }
+    } catch {
+      setReminderNote('リマインダーを設定できませんでした。');
+    }
+  }
+
   async function syncFromHealthConnect(preferred: string | null = stepSource) {
     setSyncMessage('Health Connectから取得しています…');
+    syncSleep();
     const result = await readRecentSteps(7, preferred);
     if (result.ok) {
       setDaily(result.daily);
@@ -198,6 +236,7 @@ export default function App() {
 
   useEffect(() => {
     syncFromHealthConnect();
+    loadReminder().then(setReminder);
   }, []);
 
   return (
@@ -255,6 +294,8 @@ export default function App() {
             sources={sources}
             chosen={stepSource}
             onSelectSource={selectSource}
+            sleep={sleep}
+            sleepMessage={sleepMessage}
           />
           <Pressable
             style={styles.smallBtn}
@@ -276,6 +317,9 @@ export default function App() {
             onSetGoal={changeGoalKg}
             stepGoal={stepGoal}
             onSetStepGoal={changeStepGoal}
+            reminder={reminder}
+            reminderNote={reminderNote}
+            onSetReminder={changeReminder}
           />
         </ScrollView>
       ) : tab === 'graph' ? (

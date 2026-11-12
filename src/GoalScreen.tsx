@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { palette } from './theme';
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
+import type { Reminder } from './reminder';
 
 type Props = {
   goalKg: number | null;
@@ -9,7 +10,12 @@ type Props = {
   onSetGoal: (kg: number | null) => void;
   stepGoal: number;
   onSetStepGoal: (steps: number) => void;
+  reminder: Reminder;
+  reminderNote: string | null;
+  onSetReminder: (r: Reminder) => void;
 };
+
+const REMINDER_HOURS = [20, 21, 22, 23];
 
 // Parses a whole-number step goal. Returns null when it is not a sensible value.
 function parseStepGoal(raw: string): number | null {
@@ -27,6 +33,9 @@ export function GoalScreen({
   onSetGoal,
   stepGoal,
   onSetStepGoal,
+  reminder,
+  reminderNote,
+  onSetReminder,
 }: Props) {
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +70,49 @@ export function GoalScreen({
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>目標</Text>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>毎日のリマインダー</Text>
+        <Text style={styles.sub}>
+          {reminder.enabled
+            ? `毎日 ${reminder.hour}:00 に通知します。`
+            : '通知はオフです。'}
+        </Text>
+        <View style={styles.reminderRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => onSetReminder({ ...reminder, enabled: !reminder.enabled })}
+            style={[styles.reminderBtn, reminder.enabled && styles.reminderBtnOn]}
+          >
+            <Text style={[styles.reminderText, reminder.enabled && styles.reminderTextOn]}>
+              {reminder.enabled ? 'オフにする' : 'オンにする'}
+            </Text>
+          </Pressable>
+        </View>
+        <View style={styles.reminderRow}>
+          {REMINDER_HOURS.map((h) => (
+            <Pressable
+              key={h}
+              accessibilityRole="button"
+              onPress={() => onSetReminder({ ...reminder, enabled: true, hour: h })}
+              style={[
+                styles.reminderBtn,
+                reminder.enabled && reminder.hour === h && styles.reminderBtnOn,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.reminderText,
+                  reminder.enabled && reminder.hour === h && styles.reminderTextOn,
+                ]}
+              >
+                {h}時
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {reminderNote ? <Text style={styles.sub}>{reminderNote}</Text> : null}
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.label}>目標体重</Text>
@@ -147,6 +199,29 @@ const styles = StyleSheet.create({
   wrap: {
     flex: 1,
     gap: 16,
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  reminderBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: palette.line,
+  },
+  reminderBtnOn: {
+    backgroundColor: palette.accent,
+  },
+  reminderText: {
+    color: palette.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  reminderTextOn: {
+    color: '#FFFFFF',
   },
   title: {
     fontSize: 22,
