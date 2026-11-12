@@ -3,6 +3,7 @@ import {
   getSdkStatus,
   initialize,
   aggregateGroupByPeriod,
+  aggregateRecord,
   requestPermission,
   SdkAvailabilityStatus,
 } from 'react-native-health-connect';
@@ -10,7 +11,7 @@ import {
 export type DailySteps = { date: Date; steps: number };
 
 export type StepsResult =
-  | { ok: true; daily: DailySteps[] }
+  | { ok: true; daily: DailySteps[]; today: { distanceKm: number; kcal: number } }
   | { ok: false; reason: 'unsupported' | 'unavailable' | 'denied' | 'error'; detail?: string };
 
 // Reads steps for the last `days` days (oldest first, today last) from Health Connect.
@@ -28,6 +29,8 @@ export async function readRecentSteps(days = 7): Promise<StepsResult> {
 
     const granted = await requestPermission([
       { accessType: 'read', recordType: 'Steps' },
+      { accessType: 'read', recordType: 'Distance' },
+      { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
     ]);
     const canReadSteps = granted.some(
       (p) => p.accessType === 'read' && p.recordType === 'Steps',
@@ -72,7 +75,31 @@ export async function readRecentSteps(days = 7): Promise<StepsResult> {
       );
       if (index >= 0) buckets[index].steps = g.result.COUNT_TOTAL ?? 0;
     }
-    return { ok: true, daily: buckets };
+    // Distance and calories are optional: if they cannot be read, show 0 instead of failing the steps.
+    const todayFilter = {
+      operator: 'between' as const,
+      startTime: today.toISOString(),
+      endTime: new Date().toISOString(),
+    };
+    let distanceKm = 0;
+    let kcal = 0;
+    try {
+      const dist = await aggregateRecord({ recordType: 'Distance', timeRangeFilter: todayFilter });
+      distanceKm = dist.DISTANCE?.inKilometers ?? 0;
+    } catch {
+      distanceKm = 0;
+    }
+    try {
+      const cal = await aggregateRecord({
+        recordType: 'ActiveCaloriesBurned',
+        timeRangeFilter: todayFilter,
+      });
+      kcal = cal.ACTIVE_CALORIES_TOTAL?.inKilocalories ?? 0;
+    } catch {
+      kcal = 0;
+    }
+
+    return { ok: true, daily: buckets, today: { distanceKm, kcal } };
   } catch (e) {
     return { ok: false, reason: 'error', detail: String((e as Error)?.message ?? e) };
   }

@@ -28,6 +28,7 @@ type Tab = 'today' | 'weight' | 'goal' | 'graph';
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
   const [steps, setSteps] = useState(0);
+  const [activity, setActivity] = useState({ distanceKm: 0, kcal: 0 });
   const [daily, setDaily] = useState<DailySteps[]>([]);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -146,6 +147,7 @@ export default function App() {
     const result = await readRecentSteps(7);
     if (result.ok) {
       setDaily(result.daily);
+      setActivity(result.today);
       setSteps(result.daily[result.daily.length - 1]?.steps ?? 0);
       setSyncMessage(null);
       return;
@@ -210,7 +212,12 @@ export default function App() {
 
       {tab === 'today' ? (
         <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
-          <TodayScreen steps={steps} stepGoal={stepGoal} daily={daily} />
+          <TodayScreen
+            steps={steps}
+            stepGoal={stepGoal}
+            daily={daily}
+            activity={activity}
+          />
           <Pressable
             style={styles.smallBtn}
             onPress={syncFromHealthConnect}

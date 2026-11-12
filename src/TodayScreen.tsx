@@ -9,6 +9,7 @@ type Props = {
   steps: number;
   stepGoal: number;
   daily: DailySteps[];
+  activity: { distanceKm: number; kcal: number };
 };
 
 const BAR_BELOW = '#7FB89A';
@@ -17,7 +18,7 @@ const CHART_H = 140;
 const BAR_W = 22;
 
 // Shows today's steps as a ring, and the last 7 days as bars against the goal.
-export function TodayScreen({ steps, stepGoal, daily }: Props) {
+export function TodayScreen({ steps, stepGoal, daily, activity }: Props) {
   // The ring stops at a full circle, but the percentage keeps counting past 100%.
   const ratio = Math.min(steps / stepGoal, 1);
   const percent = Math.round((steps / stepGoal) * 100);
@@ -73,6 +74,10 @@ export function TodayScreen({ steps, stepGoal, daily }: Props) {
       </View>
 
       <Text style={styles.percent}>目標の {percent}%</Text>
+
+      <Text style={styles.activity}>
+        {activity.distanceKm.toFixed(2)} km ｜ {Math.round(activity.kcal).toLocaleString('ja-JP')} kcal
+      </Text>
 
       {daily.length > 0 ? (
         <View style={styles.card}>
@@ -184,6 +189,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: palette.fg,
     fontWeight: '700',
+  },
+  activity: {
+    fontSize: 14,
+    color: palette.muted,
+    fontVariant: ['tabular-nums'],
   },
   card: {
     alignSelf: 'stretch',
