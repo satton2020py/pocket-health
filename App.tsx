@@ -90,6 +90,13 @@ export default function App() {
       {tab === 'today' ? (
         <ScrollView contentContainerStyle={{ gap: 16 }}>
           <TodayScreen steps={steps} />
+          <Pressable
+            style={styles.smallBtn}
+            onPress={syncFromHealthConnect}
+            accessibilityRole="button"
+          >
+            <Text style={styles.ctaText}>Health Connectから取得</Text>
+          </Pressable>
           {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
           <View style={styles.form}>
             <TextInput
@@ -110,13 +117,6 @@ export default function App() {
               <Text style={styles.ctaText}>反映</Text>
             </Pressable>
           </View>
-          <Pressable
-            style={styles.smallBtn}
-            onPress={syncFromHealthConnect}
-            accessibilityRole="button"
-          >
-            <Text style={styles.ctaText}>Health Connectから取得</Text>
-          </Pressable>
         </ScrollView>
       ) : (
         <>
