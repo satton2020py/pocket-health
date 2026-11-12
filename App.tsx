@@ -12,6 +12,9 @@ import {
 import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { TodayScreen } from './src/TodayScreen';
 import { readTodaySteps } from './src/healthConnect';
+import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
+import { loadWeights, saveWeight } from './src/weightStore';
+import type { User } from '@react-native-firebase/auth';
 import { palette } from './src/theme';
 
 type Tab = 'today' | 'weight';
@@ -24,18 +27,62 @@ export default function App() {
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  function record() {
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => onUserChanged(setUser), []);
+
+  // When someone signs in, move the phone-only entries to the cloud and show the cloud list.
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        for (const e of entries) await saveWeight(user.uid, e.kg);
+        setEntries(await loadWeights(user.uid));
+        setError(null);
+      } catch {
+        setError('クラウドから読み込めませんでした。');
+      }
+    })();
+    // Run only when the signed-in user changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  async function login() {
+    try {
+      const signed = await signInWithGoogle();
+      if (signed) setUser(signed);
+    } catch {
+      setError('ログインできませんでした。もう一度お試しください。');
+    }
+  }
+
+  async function logout() {
+    await signOut();
+    setEntries([]);
+    setUser(null);
+  }
+
+  async function record() {
     const kg = parseWeightInput(input);
     if (kg === null) {
       setError('kgの数字を入力してください（小数点2位まで）。');
+      return;
+    }
+    setInput('');
+    setError(null);
+    if (user) {
+      try {
+        await saveWeight(user.uid, kg);
+        setEntries(await loadWeights(user.uid));
+      } catch {
+        setError('保存できませんでした。もう一度お試しください。');
+      }
       return;
     }
     setEntries((prev) => [
       { id: String(Date.now()), kg, recordedAt: new Date() },
       ...prev,
     ]);
-    setInput('');
-    setError(null);
   }
 
   async function syncFromHealthConnect() {
@@ -97,6 +144,18 @@ export default function App() {
         </ScrollView>
       ) : (
         <>
+          <View style={styles.authRow}>
+            <Text style={styles.authText}>
+              {user ? 'ログイン中（クラウドに保存）' : 'ログインすると機種変後も残ります'}
+            </Text>
+            <Pressable
+              style={styles.smallBtn}
+              onPress={user ? logout : login}
+              accessibilityRole="button"
+            >
+              <Text style={styles.ctaText}>{user ? 'ログアウト' : 'Googleでログイン'}</Text>
+            </Pressable>
+          </View>
           <Text style={styles.title}>体重を記録</Text>
 
           <View style={styles.form}>
@@ -245,6 +304,17 @@ const styles = StyleSheet.create({
   },
   tabTextOn: {
     color: palette.fg,
+  },
+  authRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  authText: {
+    flex: 1,
+    color: palette.muted,
+    fontSize: 13,
   },
   smallBtn: {
     backgroundColor: palette.accent,

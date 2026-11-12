@@ -12,7 +12,12 @@
           "package_name": "app.json"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "387456831462-jk7amsvgbol33jr20fqd5q2d58dk5tud.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDd_79D79CIVcWLitjMPSEY6UihB3Q3Vi8"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "387456831462-jk7amsvgbol33jr20fqd5q2d58dk5tud.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
@@ -31,7 +41,20 @@
           "package_name": "com.satton2020.pockethealth"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "387456831462-obmo7v3iomduvc6nblklujentvunmt4v.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.satton2020.pockethealth",
+            "certificate_hash": "601b4900cc7ecb7f7022b48123f4ce55bcd38727"
+          }
+        },
+        {
+          "client_id": "387456831462-jk7amsvgbol33jr20fqd5q2d58dk5tud.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDd_79D79CIVcWLitjMPSEY6UihB3Q3Vi8"
@@ -39,7 +62,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "387456831462-jk7amsvgbol33jr20fqd5q2d58dk5tud.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
