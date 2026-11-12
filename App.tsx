@@ -60,6 +60,8 @@ export default function App() {
         if (saved) {
           setGoalKg(saved.goalKg);
           setStepGoal(saved.stepGoal);
+          // Use the app the user chose by hand last time, if any.
+          if (saved.stepSource) syncFromHealthConnect(saved.stepSource);
         }
         setError(null);
       } catch {
@@ -144,6 +146,16 @@ export default function App() {
     ]);
   }
 
+  // Called only when the user taps an app by hand. Remembers that choice when signed in.
+  function selectSource(origin: string) {
+    if (user) {
+      saveGoals(user.uid, { stepSource: origin }).catch(() =>
+        setError('歩数のデータ元を保存できませんでした。'),
+      );
+    }
+    syncFromHealthConnect(origin);
+  }
+
   // Picks which app's steps to use, then re-reads. Only one app is used, so nothing is double counted.
   async function syncFromHealthConnect(preferred: string | null = stepSource) {
     setSyncMessage('Health Connectから取得しています…');
@@ -224,7 +236,7 @@ export default function App() {
             activity={activity}
             sources={sources}
             chosen={stepSource}
-            onSelectSource={(origin) => syncFromHealthConnect(origin)}
+            onSelectSource={selectSource}
           />
           <Pressable
             style={styles.smallBtn}
