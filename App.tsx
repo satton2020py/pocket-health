@@ -16,7 +16,7 @@ import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
 import { GoalScreen } from './src/GoalScreen';
 import { WeightChart } from './src/WeightChart';
-import { readRecentSteps, type DailySteps } from './src/healthConnect';
+import { readRecentSteps, type DailySteps, type StepSource } from './src/healthConnect';
 import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
 import { deleteWeight, loadWeights, saveWeight } from './src/weightStore';
 import { loadGoals, saveGoals } from './src/goalStore';
@@ -30,6 +30,8 @@ export default function App() {
   const [steps, setSteps] = useState(0);
   const [activity, setActivity] = useState({ distanceKm: 0, kcal: 0 });
   const [daily, setDaily] = useState<DailySteps[]>([]);
+  const [sources, setSources] = useState<StepSource[]>([]);
+  const [stepSource, setStepSource] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<WeightEntry[]>([]);
@@ -142,12 +144,15 @@ export default function App() {
     ]);
   }
 
-  async function syncFromHealthConnect() {
+  // Picks which app's steps to use, then re-reads. Only one app is used, so nothing is double counted.
+  async function syncFromHealthConnect(preferred: string | null = stepSource) {
     setSyncMessage('Health Connectから取得しています…');
-    const result = await readRecentSteps(7);
+    const result = await readRecentSteps(7, preferred);
     if (result.ok) {
       setDaily(result.daily);
       setActivity(result.today);
+      setSources(result.sources);
+      setStepSource(result.chosen);
       setSteps(result.daily[result.daily.length - 1]?.steps ?? 0);
       setSyncMessage(null);
       return;
@@ -217,10 +222,13 @@ export default function App() {
             stepGoal={stepGoal}
             daily={daily}
             activity={activity}
+            sources={sources}
+            chosen={stepSource}
+            onSelectSource={(origin) => syncFromHealthConnect(origin)}
           />
           <Pressable
             style={styles.smallBtn}
-            onPress={syncFromHealthConnect}
+            onPress={() => syncFromHealthConnect()}
             accessibilityRole="button"
           >
             <Text style={styles.ctaText}>Health Connectから再取得</Text>

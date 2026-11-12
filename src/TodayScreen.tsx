@@ -1,7 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { palette } from './theme';
-import type { DailySteps } from './healthConnect';
+import type { DailySteps, StepSource } from './healthConnect';
 
 export const DEFAULT_STEP_GOAL = 8000;
 
@@ -10,7 +10,18 @@ type Props = {
   stepGoal: number;
   daily: DailySteps[];
   activity: { distanceKm: number; kcal: number };
+  sources: StepSource[];
+  chosen: string | null;
+  onSelectSource: (origin: string) => void;
 };
+
+// Friendly name for an app's package name. Unknown apps show their last package part.
+function sourceLabel(origin: string): string {
+  if (origin.includes('shealth')) return 'Samsung Health';
+  if (origin.includes('fitness')) return 'Google Fit';
+  if (origin === 'unknown') return '不明';
+  return origin.split('.').pop() ?? origin;
+}
 
 const BAR_BELOW = '#7FB89A';
 const BAR_REACHED = palette.accent;
@@ -18,7 +29,15 @@ const CHART_H = 140;
 const BAR_W = 22;
 
 // Shows today's steps as a ring, and the last 7 days as bars against the goal.
-export function TodayScreen({ steps, stepGoal, daily, activity }: Props) {
+export function TodayScreen({
+  steps,
+  stepGoal,
+  daily,
+  activity,
+  sources,
+  chosen,
+  onSelectSource,
+}: Props) {
   // The ring stops at a full circle, but the percentage keeps counting past 100%.
   const ratio = Math.min(steps / stepGoal, 1);
   const percent = Math.round((steps / stepGoal) * 100);
@@ -78,6 +97,33 @@ export function TodayScreen({ steps, stepGoal, daily, activity }: Props) {
       <Text style={styles.activity}>
         {activity.distanceKm.toFixed(2)} km ｜ {Math.round(activity.kcal).toLocaleString('ja-JP')} kcal
       </Text>
+
+      {sources.length > 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>歩数のデータ元</Text>
+          <Text style={styles.sub}>
+            同じ歩数が重ならないよう、1つのアプリの数字だけを使っています。
+          </Text>
+          <View style={styles.sourceRow}>
+            {sources.map((s) => {
+              const on = s.origin === chosen;
+              return (
+                <Pressable
+                  key={s.origin}
+                  onPress={() => onSelectSource(s.origin)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[styles.sourcePill, on && styles.sourcePillOn]}
+                >
+                  <Text style={[styles.sourceText, on && styles.sourceTextOn]}>
+                    {sourceLabel(s.origin)} {s.total.toLocaleString('ja-JP')}歩
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       {daily.length > 0 ? (
         <View style={styles.card}>
@@ -206,5 +252,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: palette.fg,
+  },
+  sourceRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sourcePill: {
+    backgroundColor: palette.bg,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: palette.line,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  sourcePillOn: {
+    backgroundColor: palette.accent,
+    borderColor: palette.accent,
+  },
+  sourceText: {
+    color: palette.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  sourceTextOn: {
+    color: '#FFFFFF',
   },
 });
