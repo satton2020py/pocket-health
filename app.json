@@ -19,7 +19,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.health.READ_STEPS"
-      ]
+      ],
+      "package": "com.satton2020.pockethealth",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -33,7 +35,9 @@
             "minSdkVersion": 26
           }
         }
-      ]
+      ],
+      "@react-native-firebase/app",
+      "@react-native-google-signin/google-signin"
     ]
   }
 }

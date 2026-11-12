@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "387456831462",
+    "project_id": "pocket-health-72702",
+    "storage_bucket": "pocket-health-72702.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:387456831462:android:f09802ba72521d6bca1027",
+        "android_client_info": {
+          "package_name": "app.json"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDd_79D79CIVcWLitjMPSEY6UihB3Q3Vi8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:387456831462:android:f77df00896c3c7cbca1027",
+        "android_client_info": {
+          "package_name": "com.satton2020.pockethealth"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDd_79D79CIVcWLitjMPSEY6UihB3Q3Vi8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
