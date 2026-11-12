@@ -221,7 +221,7 @@ export default function App() {
               }}
               keyboardType="decimal-pad"
               placeholder="62.45"
-              placeholderTextColor={palette.muted}
+              placeholderTextColor={palette.placeholder}
               accessibilityLabel="体重（kg）"
             />
             <Text style={styles.unit}>kg</Text>

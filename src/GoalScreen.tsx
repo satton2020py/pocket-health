@@ -87,7 +87,7 @@ export function GoalScreen({
             }}
             keyboardType="decimal-pad"
             placeholder="例: 60.00"
-            placeholderTextColor={palette.muted}
+            placeholderTextColor={palette.placeholder}
             accessibilityLabel="目標体重（kg）"
           />
           <Text style={styles.unit}>kg</Text>
@@ -122,7 +122,7 @@ export function GoalScreen({
             }}
             keyboardType="number-pad"
             placeholder="例: 10000"
-            placeholderTextColor={palette.muted}
+            placeholderTextColor={palette.placeholder}
             accessibilityLabel="1日の歩数目標"
           />
           <Text style={styles.unit}>歩</Text>

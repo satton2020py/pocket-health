@@ -115,6 +115,16 @@ export function TodayScreen({ steps, stepGoal, daily }: Props) {
                   />
                   <SvgText
                     x={cx}
+                    y={Math.max(CHART_H - h, 12) - 6}
+                    fontSize={12}
+                    fontWeight="700"
+                    fill={palette.fg}
+                    textAnchor="middle"
+                  >
+                    {d.steps.toLocaleString('ja-JP')}
+                  </SvgText>
+                  <SvgText
+                    x={cx}
                     y={CHART_H + 18}
                     fontSize={12}
                     fontWeight={isToday ? '800' : '400'}
