@@ -15,7 +15,7 @@ import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
 import { GoalScreen } from './src/GoalScreen';
 import { WeightChart } from './src/WeightChart';
-import { readTodaySteps } from './src/healthConnect';
+import { readRecentSteps, type DailySteps } from './src/healthConnect';
 import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
 import { loadWeights, saveWeight } from './src/weightStore';
 import type { User } from '@react-native-firebase/auth';
@@ -25,7 +25,8 @@ type Tab = 'today' | 'weight' | 'goal' | 'graph';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
-  const [steps, setSteps] = useState(4210);
+  const [steps, setSteps] = useState(0);
+  const [daily, setDaily] = useState<DailySteps[]>([]);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<WeightEntry[]>([]);
@@ -100,9 +101,10 @@ export default function App() {
 
   async function syncFromHealthConnect() {
     setSyncMessage('Health Connectから取得しています…');
-    const result = await readTodaySteps();
+    const result = await readRecentSteps(7);
     if (result.ok) {
-      setSteps(result.steps);
+      setDaily(result.daily);
+      setSteps(result.daily[result.daily.length - 1]?.steps ?? 0);
       setSyncMessage(null);
       return;
     }
@@ -166,7 +168,7 @@ export default function App() {
 
       {tab === 'today' ? (
         <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
-          <TodayScreen steps={steps} stepGoal={stepGoal} />
+          <TodayScreen steps={steps} stepGoal={stepGoal} daily={daily} />
           <Pressable
             style={styles.smallBtn}
             onPress={syncFromHealthConnect}
