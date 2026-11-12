@@ -16,7 +16,7 @@ import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
 import { GoalScreen } from './src/GoalScreen';
 import { WeightChart } from './src/WeightChart';
-import { readRecentSteps, type DailySteps } from './src/healthConnect';
+import { readRecentSteps, type DailySteps, type StepSource } from './src/healthConnect';
 import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
 import { deleteWeight, loadWeights, saveWeight } from './src/weightStore';
 import { loadLocalWeights, saveLocalWeights } from './src/localWeights';
@@ -29,7 +29,10 @@ type Tab = 'today' | 'weight' | 'goal' | 'graph';
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
   const [steps, setSteps] = useState(0);
+  const [activity, setActivity] = useState({ distanceKm: 0, kcal: 0 });
   const [daily, setDaily] = useState<DailySteps[]>([]);
+  const [sources, setSources] = useState<StepSource[]>([]);
+  const [stepSource, setStepSource] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<WeightEntry[]>([]);
@@ -67,6 +70,8 @@ export default function App() {
         if (saved) {
           setGoalKg(saved.goalKg);
           setStepGoal(saved.stepGoal);
+          // Use the app the user chose by hand last time, if any.
+          if (saved.stepSource) syncFromHealthConnect(saved.stepSource);
         }
         setError(null);
       } catch {
@@ -159,11 +164,25 @@ export default function App() {
     await saveLocalWeights(next);
   }
 
-  async function syncFromHealthConnect() {
+  // Called only when the user taps an app by hand. Remembers that choice when signed in.
+  function selectSource(origin: string) {
+    if (user) {
+      saveGoals(user.uid, { stepSource: origin }).catch(() =>
+        setError('歩数のデータ元を保存できませんでした。'),
+      );
+    }
+    syncFromHealthConnect(origin);
+  }
+
+  // Picks which app's steps to use, then re-reads. Only one app is used, so nothing is double counted.
+  async function syncFromHealthConnect(preferred: string | null = stepSource) {
     setSyncMessage('Health Connectから取得しています…');
-    const result = await readRecentSteps(7);
+    const result = await readRecentSteps(7, preferred);
     if (result.ok) {
       setDaily(result.daily);
+      setActivity(result.today);
+      setSources(result.sources);
+      setStepSource(result.chosen);
       setSteps(result.daily[result.daily.length - 1]?.steps ?? 0);
       setSyncMessage(null);
       return;
@@ -228,10 +247,18 @@ export default function App() {
 
       {tab === 'today' ? (
         <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
-          <TodayScreen steps={steps} stepGoal={stepGoal} daily={daily} />
+          <TodayScreen
+            steps={steps}
+            stepGoal={stepGoal}
+            daily={daily}
+            activity={activity}
+            sources={sources}
+            chosen={stepSource}
+            onSelectSource={selectSource}
+          />
           <Pressable
             style={styles.smallBtn}
-            onPress={syncFromHealthConnect}
+            onPress={() => syncFromHealthConnect()}
             accessibilityRole="button"
           >
             <Text style={styles.ctaText}>Health Connectから再取得</Text>
