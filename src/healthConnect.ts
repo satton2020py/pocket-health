@@ -10,6 +10,9 @@ import {
 
 export type DailySteps = { date: Date; steps: number };
 
+// Samsung Health's Android package name. Steps are counted only from this source.
+const STEP_SOURCE = 'com.sec.android.app.shealth';
+
 export type StepsResult =
   | { ok: true; daily: DailySteps[]; today: { distanceKm: number; kcal: number } }
   | { ok: false; reason: 'unsupported' | 'unavailable' | 'denied' | 'error'; detail?: string };
@@ -57,6 +60,8 @@ export async function readRecentSteps(days = 7): Promise<StepsResult> {
         endTime: new Date().toISOString(),
       },
       timeRangeSlicer: { period: 'DAYS', length: 1 },
+      // Count only Samsung Health. Old steps still stored from other apps would double the total.
+      dataOriginFilter: [STEP_SOURCE],
     });
 
     const buckets: DailySteps[] = [];
