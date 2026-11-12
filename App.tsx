@@ -11,13 +11,15 @@ import {
 } from 'react-native';
 import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { TodayScreen } from './src/TodayScreen';
+import { GoalScreen } from './src/GoalScreen';
+import { WeightChart } from './src/WeightChart';
 import { readTodaySteps } from './src/healthConnect';
 import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
 import { loadWeights, saveWeight } from './src/weightStore';
 import type { User } from '@react-native-firebase/auth';
 import { palette } from './src/theme';
 
-type Tab = 'today' | 'weight';
+type Tab = 'today' | 'weight' | 'goal' | 'graph';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
@@ -26,8 +28,15 @@ export default function App() {
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Target weight. Kept in memory for now, so it resets when the app restarts.
+  const [goalKg, setGoalKg] = useState<number | null>(null);
 
   const [user, setUser] = useState<User | null>(null);
+
+  const latestEntry =
+    entries.length > 0
+      ? entries.reduce((a, b) => (a.recordedAt > b.recordedAt ? a : b))
+      : null;
 
   useEffect(() => onUserChanged(setUser), []);
 
@@ -128,6 +137,24 @@ export default function App() {
             体重
           </Text>
         </Pressable>
+        <Pressable
+          onPress={() => setTab('goal')}
+          accessibilityRole="tab"
+          style={[styles.tab, tab === 'goal' && styles.tabOn]}
+        >
+          <Text style={[styles.tabText, tab === 'goal' && styles.tabTextOn]}>
+            目標
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setTab('graph')}
+          accessibilityRole="tab"
+          style={[styles.tab, tab === 'graph' && styles.tabOn]}
+        >
+          <Text style={[styles.tabText, tab === 'graph' && styles.tabTextOn]}>
+            グラフ
+          </Text>
+        </Pressable>
       </View>
 
       {tab === 'today' ? (
@@ -141,6 +168,18 @@ export default function App() {
             <Text style={styles.ctaText}>Health Connectから再取得</Text>
           </Pressable>
           {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
+        </ScrollView>
+      ) : tab === 'goal' ? (
+        <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
+          <GoalScreen
+            goalKg={goalKg}
+            latest={latestEntry}
+            onSetGoal={setGoalKg}
+          />
+        </ScrollView>
+      ) : tab === 'graph' ? (
+        <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
+          <WeightChart entries={entries} goalKg={goalKg} />
         </ScrollView>
       ) : (
         <>
