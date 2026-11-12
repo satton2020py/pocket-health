@@ -18,8 +18,9 @@ const BAR_W = 22;
 
 // Shows today's steps as a ring, and the last 7 days as bars against the goal.
 export function TodayScreen({ steps, stepGoal, daily }: Props) {
+  // The ring stops at a full circle, but the percentage keeps counting past 100%.
   const ratio = Math.min(steps / stepGoal, 1);
-  const percent = Math.round(ratio * 100);
+  const percent = Math.round((steps / stepGoal) * 100);
   const size = 200;
   const stroke = 14;
   const radius = (size - stroke) / 2;
