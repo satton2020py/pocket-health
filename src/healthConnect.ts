@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import {
   getSdkStatus,
   initialize,
-  readRecords,
+  aggregateGroupByPeriod,
   requestPermission,
   SdkAvailabilityStatus,
 } from 'react-native-health-connect';
@@ -44,30 +44,33 @@ export async function readRecentSteps(days = 7): Promise<StepsResult> {
     const first = new Date(today);
     first.setDate(today.getDate() - (days - 1));
 
-    const { records } = await readRecords('Steps', {
+    // Aggregate per day instead of summing raw records. Health Connect merges overlapping
+    // records from several sources (phone and watch), so summing records double-counts.
+    const groups = await aggregateGroupByPeriod({
+      recordType: 'Steps',
       timeRangeFilter: {
         operator: 'between',
         startTime: first.toISOString(),
         endTime: new Date().toISOString(),
       },
+      timeRangeSlicer: { period: 'DAYS', length: 1 },
     });
 
-    // Build one bucket per local day, then add each record to the day it started on.
     const buckets: DailySteps[] = [];
     for (let i = 0; i < days; i++) {
       const d = new Date(first);
       d.setDate(first.getDate() + i);
       buckets.push({ date: d, steps: 0 });
     }
-    for (const r of records) {
-      const started = new Date(r.startTime);
+    for (const g of groups) {
+      const started = new Date(g.startTime);
       const index = buckets.findIndex(
         (b) =>
           b.date.getFullYear() === started.getFullYear() &&
           b.date.getMonth() === started.getMonth() &&
           b.date.getDate() === started.getDate(),
       );
-      if (index >= 0) buckets[index].steps += r.count;
+      if (index >= 0) buckets[index].steps = g.result.COUNT_TOTAL ?? 0;
     }
     return { ok: true, daily: buckets };
   } catch (e) {
