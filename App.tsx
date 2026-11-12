@@ -18,6 +18,7 @@ import { WeightChart } from './src/WeightChart';
 import { readRecentSteps, type DailySteps } from './src/healthConnect';
 import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
 import { loadWeights, saveWeight } from './src/weightStore';
+import { loadGoals, saveGoals } from './src/goalStore';
 import type { User } from '@react-native-firebase/auth';
 import { palette } from './src/theme';
 
@@ -31,9 +32,8 @@ export default function App() {
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  // Target weight. Kept in memory for now, so it resets when the app restarts.
+  // Goals. Saved to the cloud when signed in, otherwise they last only until the app closes.
   const [goalKg, setGoalKg] = useState<number | null>(null);
-  // Daily step goal. Also kept in memory for now.
   const [stepGoal, setStepGoal] = useState(DEFAULT_STEP_GOAL);
 
   const [user, setUser] = useState<User | null>(null);
@@ -52,6 +52,11 @@ export default function App() {
       try {
         for (const e of entries) await saveWeight(user.uid, e.kg);
         setEntries(await loadWeights(user.uid));
+        const saved = await loadGoals(user.uid);
+        if (saved) {
+          setGoalKg(saved.goalKg);
+          setStepGoal(saved.stepGoal);
+        }
         setError(null);
       } catch {
         setError('クラウドから読み込めませんでした。');
@@ -60,6 +65,25 @@ export default function App() {
     // Run only when the signed-in user changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Updates a goal on screen and, when signed in, saves it to the cloud.
+  function changeGoalKg(kg: number | null) {
+    setGoalKg(kg);
+    if (user) {
+      saveGoals(user.uid, { goalKg: kg, stepGoal }).catch(() =>
+        setError('目標を保存できませんでした。'),
+      );
+    }
+  }
+
+  function changeStepGoal(steps: number) {
+    setStepGoal(steps);
+    if (user) {
+      saveGoals(user.uid, { goalKg, stepGoal: steps }).catch(() =>
+        setError('目標を保存できませんでした。'),
+      );
+    }
+  }
 
   async function login() {
     try {
@@ -186,9 +210,9 @@ export default function App() {
           <GoalScreen
             goalKg={goalKg}
             latest={latestEntry}
-            onSetGoal={setGoalKg}
+            onSetGoal={changeGoalKg}
             stepGoal={stepGoal}
-            onSetStepGoal={setStepGoal}
+            onSetStepGoal={changeStepGoal}
           />
         </ScrollView>
       ) : tab === 'graph' ? (
