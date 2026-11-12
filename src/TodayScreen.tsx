@@ -20,6 +20,8 @@ function sourceLabel(origin: string): string {
   if (origin.includes('shealth')) return 'Samsung Health';
   if (origin.includes('fitness')) return 'Google Fit';
   if (origin === 'unknown') return '不明';
+  // Package names contain dots. An id without dots is not a package name, so show it as unknown.
+  if (!origin.includes('.')) return '不明なアプリ';
   return origin.split('.').pop() ?? origin;
 }
 
@@ -93,6 +95,9 @@ export function TodayScreen({
       </View>
 
       <Text style={styles.percent}>目標の {percent}%</Text>
+      {chosen ? (
+        <Text style={styles.sub}>歩数のデータ元: {sourceLabel(chosen)}</Text>
+      ) : null}
 
       <Text style={styles.activity}>
         {activity.distanceKm.toFixed(2)} km ｜ {Math.round(activity.kcal).toLocaleString('ja-JP')} kcal
