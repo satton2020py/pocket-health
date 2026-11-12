@@ -89,6 +89,7 @@ export default function App() {
       {tab === 'today' ? (
         <>
           <TodayScreen steps={steps} />
+          {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
           <View style={styles.form}>
             <TextInput
               style={[styles.input, { fontSize: 18 }]}
@@ -115,7 +116,6 @@ export default function App() {
           >
             <Text style={styles.ctaText}>Health Connectから取得</Text>
           </Pressable>
-          {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
         </>
       ) : (
         <>
