@@ -143,6 +143,8 @@ export async function readRecentSteps(
     let kcal = 0;
     // Collects why distance or calories could not be shown, so the screen can say so.
     const problems: string[] = [];
+    // If the step app has no distance or calories today, use what other apps have.
+    // This is not added to the steps, so it does not double count steps.
     try {
       const dist = await aggregateRecord({
         recordType: 'Distance',
@@ -150,6 +152,13 @@ export async function readRecentSteps(
         ...originFilter,
       });
       distanceKm = dist.DISTANCE?.inKilometers ?? 0;
+      if (distanceKm === 0 && chosen) {
+        const any = await aggregateRecord({
+          recordType: 'Distance',
+          timeRangeFilter: todayFilter,
+        });
+        distanceKm = any.DISTANCE?.inKilometers ?? 0;
+      }
       if (distanceKm === 0) problems.push('距離: 今日の記録がありません');
     } catch (e) {
       problems.push(`距離: ${String((e as Error)?.message ?? e)}`);
@@ -161,6 +170,13 @@ export async function readRecentSteps(
         ...originFilter,
       });
       kcal = cal.ACTIVE_CALORIES_TOTAL?.inKilocalories ?? 0;
+      if (kcal === 0 && chosen) {
+        const any = await aggregateRecord({
+          recordType: 'ActiveCaloriesBurned',
+          timeRangeFilter: todayFilter,
+        });
+        kcal = any.ACTIVE_CALORIES_TOTAL?.inKilocalories ?? 0;
+      }
       if (kcal === 0) problems.push('カロリー: 今日の記録がありません');
     } catch (e) {
       problems.push(`カロリー: ${String((e as Error)?.message ?? e)}`);
