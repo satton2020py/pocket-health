@@ -3,6 +3,7 @@ import {
   getSdkStatus,
   initialize,
   insertRecords,
+  getGrantedPermissions,
   readRecords,
   requestPermission,
   SdkAvailabilityStatus,
@@ -25,9 +26,7 @@ export async function readLastNightSleep(): Promise<SleepResult> {
     const initialized = await initialize();
     if (!initialized) return { ok: false, reason: 'unavailable', detail: 'initialize=false' };
 
-    const granted = await requestPermission([
-      { accessType: 'read', recordType: 'SleepSession' },
-    ]);
+    const granted = await getGrantedPermissions();
     const canRead = granted.some(
       (p) => p.accessType === 'read' && p.recordType === 'SleepSession',
     );
@@ -117,5 +116,54 @@ export async function writeSleep(start: Date, end: Date): Promise<string | null>
     return null;
   } catch (e) {
     return `保存できませんでした。（${String((e as Error)?.message ?? e)}）`;
+  }
+}
+
+export type SleepNight = { date: Date; hours: number; start: Date | null; end: Date | null };
+
+// Reads sleep for the last `days` mornings. Each night is filed under the day you woke up.
+// When several sessions end on the same day (two apps, or a nap), the longest one is used,
+// so the same night is never counted twice.
+export async function readSleepHistory(
+  days = 7,
+): Promise<{ ok: true; nights: SleepNight[] } | { ok: false }> {
+  if (Platform.OS !== 'android') return { ok: false };
+  try {
+    if ((await getSdkStatus()) !== SdkAvailabilityStatus.SDK_AVAILABLE) return { ok: false };
+    if (!(await initialize())) return { ok: false };
+    const granted = await getGrantedPermissions();
+    if (!granted.some((p) => p.accessType === 'read' && p.recordType === 'SleepSession')) {
+      return { ok: false };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nights: SleepNight[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      nights.push({ date: d, hours: 0, start: null, end: null });
+    }
+    // Start a day early so a night that began the evening before the first morning is included.
+    const from = new Date(nights[0].date.getTime() - 24 * 60 * 60 * 1000);
+    const { records } = await readRecords('SleepSession', {
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: from.toISOString(),
+        endTime: new Date().toISOString(),
+      },
+    });
+
+    for (const r of records) {
+      const start = new Date(r.startTime);
+      const end = new Date(r.endTime);
+      const night = nights.find((n) => n.date.toDateString() === end.toDateString());
+      if (!night) continue;
+      const hours = Math.round(((end.getTime() - start.getTime()) / 3600000) * 10) / 10;
+      if (hours > night.hours) Object.assign(night, { hours, start, end });
+    }
+    return { ok: true, nights };
+  } catch {
+    return { ok: false };
   }
 }

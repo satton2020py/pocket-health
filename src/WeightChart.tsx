@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Line, Polyline, Rect, Text as SvgText } from 'react-native-svg';
-import { palette } from './theme';
+import { type Palette, usePalette, useStyles } from './theme';
 import { formatWeight, type WeightEntry } from './weight';
 import { forecastGoal } from './trend';
 
@@ -23,8 +23,6 @@ const LEFT = 58;
 const RIGHT = 14;
 const TOP = 14;
 const BOTTOM = 34;
-const GOAL_RED = '#D32F2F';
-const GRID = '#EEEAE0';
 
 // Picks a tick spacing that gives a readable number of y-axis labels.
 function tickStep(span: number): number {
@@ -39,6 +37,8 @@ const shortDate = (d: Date) =>
 // Shows the weight history over a chosen period, with gridlines and the goal as a red dashed line.
 export function WeightChart({ entries, goalKg }: Props) {
   const { width: windowWidth } = useWindowDimensions();
+  const p = usePalette();
+  const styles = useStyles(makeStyles);
   const [rangeIndex, setRangeIndex] = useState(1);
   const range = RANGES[rangeIndex];
 
@@ -68,7 +68,6 @@ export function WeightChart({ entries, goalKg }: Props) {
   if (visible.length < 2) {
     return (
       <View style={styles.wrap}>
-        <Text style={styles.title}>グラフ</Text>
         {tabs}
         <View style={styles.card}>
           <Text style={styles.sub}>
@@ -91,7 +90,8 @@ export function WeightChart({ entries, goalKg }: Props) {
     ticks.push(Math.round(t * 100) / 100);
   }
 
-  const width = windowWidth - 40;
+  // Screen padding (20 each side) and card padding (8 each side).
+  const width = windowWidth - 56;
   const plotW = width - LEFT - RIGHT;
   const plotH = HEIGHT - TOP - BOTTOM;
   const tStart = start.getTime();
@@ -117,7 +117,6 @@ export function WeightChart({ entries, goalKg }: Props) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>グラフ</Text>
       {tabs}
 
       <View style={styles.card}>
@@ -129,7 +128,7 @@ export function WeightChart({ entries, goalKg }: Props) {
               x2={width - RIGHT}
               y1={y(t)}
               y2={y(t)}
-              stroke={GRID}
+              stroke={p.grid}
               strokeWidth={1}
             />
           ))}
@@ -140,7 +139,7 @@ export function WeightChart({ entries, goalKg }: Props) {
               x2={LEFT + m.f * plotW}
               y1={TOP}
               y2={HEIGHT - BOTTOM}
-              stroke={GRID}
+              stroke={p.grid}
               strokeWidth={1}
             />
           ))}
@@ -150,7 +149,7 @@ export function WeightChart({ entries, goalKg }: Props) {
               x={LEFT - 8}
               y={y(t) + 4}
               fontSize={12}
-              fill={palette.muted}
+              fill={p.muted}
               textAnchor="end"
             >
               {t.toFixed(2)}
@@ -162,7 +161,7 @@ export function WeightChart({ entries, goalKg }: Props) {
               x={LEFT + m.f * plotW}
               y={HEIGHT - 10}
               fontSize={11}
-              fill={palette.muted}
+              fill={p.muted}
               textAnchor={m.f === 0 ? 'start' : m.f === 1 ? 'end' : 'middle'}
             >
               {shortDate(m.date)}
@@ -175,7 +174,7 @@ export function WeightChart({ entries, goalKg }: Props) {
                 x2={width - RIGHT}
                 y1={y(goalKg)}
                 y2={y(goalKg)}
-                stroke={GOAL_RED}
+                stroke={p.goal}
                 strokeWidth={2}
                 strokeDasharray="6 5"
               />
@@ -185,14 +184,14 @@ export function WeightChart({ entries, goalKg }: Props) {
                 width={LEFT - 6}
                 height={20}
                 rx={4}
-                fill={GOAL_RED}
+                fill={p.goal}
               />
               <SvgText
                 x={(LEFT - 6) / 2}
                 y={y(goalKg) + 4}
                 fontSize={12}
                 fontWeight="700"
-                fill="#FFFFFF"
+                fill={p.onAccent}
                 textAnchor="middle"
               >
                 {goalKg.toFixed(2)}
@@ -202,7 +201,7 @@ export function WeightChart({ entries, goalKg }: Props) {
           <Polyline
             points={points}
             fill="none"
-            stroke={palette.accent}
+            stroke={p.accent}
             strokeWidth={3}
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -213,7 +212,7 @@ export function WeightChart({ entries, goalKg }: Props) {
               cx={x(e.recordedAt)}
               cy={y(e.kg)}
               r={4.5}
-              fill={palette.accent}
+              fill={p.accent}
             />
           ))}
         </Svg>
@@ -243,7 +242,8 @@ export function WeightChart({ entries, goalKg }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
   wrap: {
     flex: 1,
     gap: 16,
@@ -251,27 +251,27 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '800',
-    color: palette.fg,
+    color: p.fg,
   },
   card: {
-    backgroundColor: palette.surface,
+    backgroundColor: p.surface,
     borderRadius: 16,
     padding: 8,
     gap: 8,
   },
   sub: {
-    color: palette.muted,
+    color: p.muted,
     fontSize: 13,
     padding: 4,
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: palette.fg,
+    color: p.fg,
   },
   tabs: {
     flexDirection: 'row',
-    backgroundColor: palette.line,
+    backgroundColor: p.line,
     borderRadius: 999,
     padding: 4,
   },
@@ -282,14 +282,14 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   tabOn: {
-    backgroundColor: palette.surface,
+    backgroundColor: p.surface,
   },
   tabText: {
-    color: palette.muted,
+    color: p.muted,
     fontSize: 13,
     fontWeight: '700',
   },
   tabTextOn: {
-    color: palette.fg,
+    color: p.fg,
   },
 });

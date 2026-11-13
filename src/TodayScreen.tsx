@@ -1,72 +1,29 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
-import { palette } from './theme';
+import { type Palette, usePalette, useStyles } from './theme';
 import type { DailySteps } from './healthConnect';
+import { type Clock, clockText, DateTimePicker, dayLabel, TimePicker } from './pickers';
+import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
+import { useWeightText, WeightInput } from './WeightInput';
 
 export const DEFAULT_STEP_GOAL = 8000;
 
 type Props = {
+  latest: WeightEntry | null;
+  goalKg: number | null;
+  onAddWeight: (kg: number, at: Date) => Promise<boolean>;
+  weightError: string | null;
   steps: number;
   stepGoal: number;
   daily: DailySteps[];
   activity: { distanceKm: number; kcal: number };
   sleep: { hours: number; start: Date; end: Date } | null;
   sleepMessage: string | null;
-  onSaveSleep: (bed: string, wake: string) => Promise<string | null>;
+  onSaveSleep: (bed: Clock, wake: Clock) => Promise<string | null>;
 };
 
-// Lets the user type last night's bedtime and wake-up time, which are saved to Health Connect.
-function SleepForm({ onSave }: { onSave: Props['onSaveSleep'] }) {
-  const [bed, setBed] = useState('');
-  const [wake, setWake] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function save() {
-    setBusy(true);
-    const result = await onSave(bed, wake);
-    setBusy(false);
-    setError(result);
-    if (!result) {
-      setBed('');
-      setWake('');
-    }
-  }
-
-  return (
-    <View style={styles.form}>
-      <Text style={styles.sub}>睡眠を手動で入力</Text>
-      <View style={styles.formRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="就寝 23:30"
-          placeholderTextColor={palette.placeholder}
-          value={bed}
-          onChangeText={setBed}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="起床 07:00"
-          placeholderTextColor={palette.placeholder}
-          value={wake}
-          onChangeText={setWake}
-        />
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        onPress={save}
-        disabled={busy}
-        style={styles.saveBtn}
-      >
-        <Text style={styles.saveText}>{busy ? '保存中…' : '保存する'}</Text>
-      </Pressable>
-      {error ? <Text style={styles.sub}>{error}</Text> : null}
-    </View>
-  );
-}
-
-const clock = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+const timeOf = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 // Friendly name for an app's package name. Unknown apps show their last package part.
 export function sourceLabel(origin: string): string {
@@ -81,26 +38,171 @@ export function sourceLabel(origin: string): string {
   return last;
 }
 
-const BAR_BELOW = '#7FB89A';
-const BAR_REACHED = palette.accent;
+// Records a weight from the Today screen. Starts from the last value, so most days only
+// need a tap or two on ±0.1 and then "記録する".
+function WeightCard({
+  latest,
+  goalKg,
+  onAdd,
+  error,
+}: {
+  latest: WeightEntry | null;
+  goalKg: number | null;
+  onAdd: Props['onAddWeight'];
+  error: string | null;
+}) {
+  const styles = useStyles(makeStyles);
+  const [text, setText, resetText] = useWeightText(latest?.kg ?? null);
+  const [at, setAt] = useState<Date | null>(null);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function record() {
+    const kg = parseWeightInput(text);
+    if (kg === null) {
+      setInputError('20〜300kgの数字を入力してください（小数点2位まで）。');
+      return;
+    }
+    setInputError(null);
+    setBusy(true);
+    const ok = await onAdd(kg, at ?? new Date());
+    setBusy(false);
+    if (ok) {
+      setAt(null);
+      resetText();
+    }
+  }
+
+  const remaining = goalKg !== null && latest !== null ? latest.kg - goalKg : null;
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>体重</Text>
+      {latest ? (
+        <Text style={styles.sub}>
+          前回 {formatWeight(latest.kg)} kg（{dayLabel(latest.recordedAt)} {timeOf(latest.recordedAt)}）
+          {remaining !== null
+            ? remaining > 0
+              ? ` ／ 目標まであと ${formatWeight(remaining)} kg`
+              : ' ／ 目標に到達しています'
+            : ''}
+        </Text>
+      ) : (
+        <Text style={styles.sub}>最初の体重を入力してください。</Text>
+      )}
+
+      <WeightInput
+        text={text}
+        onChange={(t) => {
+          setText(t);
+          setInputError(null);
+        }}
+        fallbackKg={latest?.kg ?? 60}
+      />
+
+      <Pressable
+        onPress={() => setAt(at ? null : new Date())}
+        accessibilityRole="button"
+        hitSlop={6}
+      >
+        <Text style={styles.link}>
+          日時：{at ? `${dayLabel(at)} ${timeOf(at)}` : '今'}　{at ? '今に戻す' : '変える'}
+        </Text>
+      </Pressable>
+      {at ? <DateTimePicker value={at} onChange={setAt} /> : null}
+
+      {inputError || error ? <Text style={styles.error}>{inputError ?? error}</Text> : null}
+      <Pressable
+        style={({ pressed }) => [styles.cta, (pressed || busy) && { opacity: 0.85 }]}
+        onPress={record}
+        disabled={busy}
+        accessibilityRole="button"
+      >
+        <Text style={styles.ctaText}>{busy ? '保存中…' : '記録する'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// Last night's sleep, with a folded form to enter it by hand.
+function SleepCard({
+  sleep,
+  sleepMessage,
+  onSave,
+}: {
+  sleep: Props['sleep'];
+  sleepMessage: string | null;
+  onSave: Props['onSaveSleep'];
+}) {
+  const styles = useStyles(makeStyles);
+  const [open, setOpen] = useState(false);
+  const [bed, setBed] = useState<Clock>({ h: 23, m: 0 });
+  const [wake, setWake] = useState<Clock>({ h: 7, m: 0 });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    const result = await onSave(bed, wake);
+    setBusy(false);
+    setError(result);
+    if (!result) setOpen(false);
+  }
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>昨夜の睡眠</Text>
+      {sleep ? (
+        <>
+          <Text style={styles.big}>{sleep.hours.toFixed(1)} 時間</Text>
+          <Text style={styles.sub}>
+            {timeOf(sleep.start)} 〜 {timeOf(sleep.end)}
+          </Text>
+        </>
+      ) : (
+        <Text style={styles.sub}>{sleepMessage ?? '読み込み中…'}</Text>
+      )}
+
+      {open ? (
+        <View style={styles.form}>
+          <Text style={styles.sub}>就寝 {clockText(bed)}</Text>
+          <TimePicker value={bed} onChange={setBed} />
+          <Text style={styles.sub}>起床 {clockText(wake)}</Text>
+          <TimePicker value={wake} onChange={setWake} />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.formRow}>
+            <Pressable onPress={() => setOpen(false)} accessibilityRole="button" style={styles.ghostBtn}>
+              <Text style={styles.ghostText}>やめる</Text>
+            </Pressable>
+            <Pressable onPress={save} disabled={busy} accessibilityRole="button" style={styles.smallCta}>
+              <Text style={styles.ctaText}>{busy ? '保存中…' : '保存する'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <Pressable onPress={() => setOpen(true)} accessibilityRole="button" hitSlop={6}>
+          <Text style={styles.link}>手で入力</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 const CHART_H = 140;
 const BAR_W = 22;
 
-// Shows today's steps as a ring, and the last 7 days as bars against the goal.
-export function TodayScreen({
-  steps,
-  stepGoal,
-  daily,
-  activity,
-  sleep,
-  sleepMessage,
-  onSaveSleep,
-}: Props) {
+// Weight first (the main goal), then steps and last night's sleep.
+export function TodayScreen(props: Props) {
+  const { steps, stepGoal, daily, activity } = props;
+  const styles = useStyles(makeStyles);
+  const p = usePalette();
+  const { width: windowWidth } = useWindowDimensions();
+
   // The ring stops at a full circle, but the percentage keeps counting past 100%.
   const ratio = Math.min(steps / stepGoal, 1);
   const percent = Math.round((steps / stepGoal) * 100);
-  const size = 200;
-  const stroke = 14;
+  const size = 160;
+  const stroke = 12;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
 
@@ -114,61 +216,47 @@ export function TodayScreen({
 
   const chartMax = Math.max(stepGoal, ...daily.map((d) => d.steps)) * 1.1;
   const barY = (v: number) => CHART_H - (v / chartMax) * CHART_H;
-  const chartW = 320;
+  // Screen padding (20 each side) and card padding (16 each side).
+  const chartW = Math.max(240, windowWidth - 72);
   const slot = chartW / Math.max(daily.length, 1);
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>今日</Text>
+      <Text style={styles.title}>今日 {dayLabel(new Date())}</Text>
 
-      <View style={styles.ringBox}>
-        <Svg width={size} height={size} style={styles.svg}>
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={palette.line}
-            strokeWidth={stroke}
-            fill="none"
-          />
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={palette.accent}
-            strokeWidth={stroke}
-            strokeLinecap="round"
-            fill="none"
-            strokeDasharray={`${circumference * ratio} ${circumference}`}
-          />
-        </Svg>
-        <View style={styles.center}>
+      <WeightCard
+        latest={props.latest}
+        goalKg={props.goalKg}
+        onAdd={props.onAddWeight}
+        error={props.weightError}
+      />
+
+      <View style={[styles.card, styles.center]}>
+        <Text style={[styles.cardTitle, styles.stretch]}>歩数</Text>
+        <View style={styles.ringBox}>
+          <Svg width={size} height={size} style={styles.svg}>
+            <Circle cx={size / 2} cy={size / 2} r={radius} stroke={p.line} strokeWidth={stroke} fill="none" />
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={p.accent}
+              strokeWidth={stroke}
+              strokeLinecap="round"
+              fill="none"
+              strokeDasharray={`${circumference * ratio} ${circumference}`}
+            />
+          </Svg>
           <Text style={styles.steps}>{steps.toLocaleString('ja-JP')}</Text>
-          <Text style={styles.sub}>
-            歩 ／ 目標 {stepGoal.toLocaleString('ja-JP')}歩
-          </Text>
+          <Text style={styles.sub}>目標の {percent}%</Text>
         </View>
+        <Text style={styles.sub}>
+          目標 {stepGoal.toLocaleString('ja-JP')}歩 ｜ {activity.distanceKm.toFixed(2)} km ｜{' '}
+          {Math.round(activity.kcal).toLocaleString('ja-JP')} kcal
+        </Text>
       </View>
 
-      <Text style={styles.percent}>目標の {percent}%</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>昨夜の睡眠</Text>
-        {sleep ? (
-          <>
-            <Text style={styles.sleepValue}>{sleep.hours.toFixed(1)} 時間</Text>
-            <Text style={styles.sub}>
-              {clock(sleep.start)} 〜 {clock(sleep.end)}
-            </Text>
-          </>
-        ) : (
-          <Text style={styles.sub}>{sleepMessage ?? '読み込み中…'}</Text>
-        )}
-        <SleepForm onSave={onSaveSleep} />
-      </View>
-      <Text style={styles.activity}>
-        {activity.distanceKm.toFixed(2)} km ｜ {Math.round(activity.kcal).toLocaleString('ja-JP')} kcal
-      </Text>
+      <SleepCard sleep={props.sleep} sleepMessage={props.sleepMessage} onSave={props.onSaveSleep} />
 
       {daily.length > 0 ? (
         <View style={styles.card}>
@@ -182,17 +270,11 @@ export function TodayScreen({
               x2={chartW}
               y1={barY(stepGoal)}
               y2={barY(stepGoal)}
-              stroke={palette.accent}
+              stroke={p.accent}
               strokeWidth={1.5}
               strokeDasharray="3 4"
             />
-            <SvgText
-              x={chartW}
-              y={barY(stepGoal) - 6}
-              fontSize={11}
-              fill={palette.accent}
-              textAnchor="end"
-            >
+            <SvgText x={chartW} y={barY(stepGoal) - 6} fontSize={11} fill={p.accent} textAnchor="end">
               目標 {stepGoal.toLocaleString('ja-JP')}
             </SvgText>
             {daily.map((d, i) => {
@@ -208,14 +290,14 @@ export function TodayScreen({
                     width={BAR_W}
                     height={Math.max(h, 2)}
                     rx={BAR_W / 2}
-                    fill={reached ? BAR_REACHED : BAR_BELOW}
+                    fill={reached ? p.accent : p.accentSoft}
                   />
                   <SvgText
                     x={cx}
                     y={Math.max(CHART_H - h, 12) - 6}
-                    fontSize={12}
+                    fontSize={11}
                     fontWeight="700"
-                    fill={palette.fg}
+                    fill={p.fg}
                     textAnchor="middle"
                   >
                     {d.steps.toLocaleString('ja-JP')}
@@ -225,7 +307,7 @@ export function TodayScreen({
                     y={CHART_H + 18}
                     fontSize={12}
                     fontWeight={isToday ? '800' : '400'}
-                    fill={isToday ? palette.fg : palette.muted}
+                    fill={isToday ? p.fg : p.muted}
                     textAnchor="middle"
                   >
                     {d.date.getDate()}
@@ -240,122 +322,26 @@ export function TodayScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 16,
-  },
-  title: {
-    alignSelf: 'stretch',
-    fontSize: 22,
-    fontWeight: '800',
-    color: palette.fg,
-  },
-  ringBox: {
-    width: 200,
-    height: 200,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  svg: {
-    position: 'absolute',
-    transform: [{ rotate: '-90deg' }],
-  },
-  center: {
-    alignItems: 'center',
-  },
-  steps: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: palette.fg,
-    fontVariant: ['tabular-nums'],
-  },
-  sub: {
-    fontSize: 12,
-    color: palette.muted,
-    marginTop: 4,
-  },
-  form: {
-    gap: 8,
-    paddingHorizontal: 4,
-    paddingTop: 8,
-  },
-  formRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: palette.bg,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    fontSize: 14,
-    color: palette.fg,
-  },
-  saveBtn: {
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: palette.accent,
-  },
-  saveText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  sleepValue: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: palette.fg,
-    fontVariant: ['tabular-nums'],
-  },
-  percent: {
-    fontSize: 15,
-    color: palette.fg,
-    fontWeight: '700',
-  },
-  activity: {
-    fontSize: 14,
-    color: palette.muted,
-    fontVariant: ['tabular-nums'],
-  },
-  card: {
-    alignSelf: 'stretch',
-    backgroundColor: palette.surface,
-    borderRadius: 16,
-    padding: 16,
-    gap: 8,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: palette.fg,
-  },
-  sourceRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  sourcePill: {
-    backgroundColor: palette.bg,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: palette.line,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  sourcePillOn: {
-    backgroundColor: palette.accent,
-    borderColor: palette.accent,
-  },
-  sourceText: {
-    color: palette.muted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  sourceTextOn: {
-    color: '#FFFFFF',
-  },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    wrap: { gap: 16 },
+    title: { fontSize: 22, fontWeight: '800', color: p.fg },
+    card: { backgroundColor: p.surface, borderRadius: 16, padding: 16, gap: 10 },
+    center: { alignItems: 'center' },
+    stretch: { alignSelf: 'stretch' },
+    cardTitle: { fontSize: 16, fontWeight: '800', color: p.fg },
+    sub: { fontSize: 13, color: p.muted },
+    big: { fontSize: 28, fontWeight: '800', color: p.fg, fontVariant: ['tabular-nums'] },
+    link: { color: p.accent, fontSize: 14, fontWeight: '700' },
+    error: { color: p.error, fontSize: 13 },
+    ringBox: { width: 160, height: 160, alignItems: 'center', justifyContent: 'center' },
+    svg: { position: 'absolute', transform: [{ rotate: '-90deg' }] },
+    steps: { fontSize: 32, fontWeight: '800', color: p.fg, fontVariant: ['tabular-nums'] },
+    form: { gap: 8 },
+    formRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+    cta: { backgroundColor: p.accent, borderRadius: 999, paddingVertical: 14, alignItems: 'center' },
+    smallCta: { flex: 1, backgroundColor: p.accent, borderRadius: 999, paddingVertical: 12, alignItems: 'center' },
+    ctaText: { color: p.onAccent, fontSize: 16, fontWeight: '800' },
+    ghostBtn: { flex: 1, borderRadius: 999, paddingVertical: 12, alignItems: 'center', backgroundColor: p.line },
+    ghostText: { color: p.muted, fontSize: 16, fontWeight: '700' },
+  });

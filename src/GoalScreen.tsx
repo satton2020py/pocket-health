@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { palette } from './theme';
+import { type Palette, usePalette, useStyles } from './theme';
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
-import type { Reminder } from './reminder';
 
 type Props = {
   goalKg: number | null;
@@ -10,13 +9,9 @@ type Props = {
   onSetGoal: (kg: number | null) => void;
   stepGoal: number;
   onSetStepGoal: (steps: number) => void;
-  reminder: Reminder;
-  reminderNote: string | null;
-  onSetReminder: (r: Reminder) => void;
-  onTestReminder: () => void;
+  // A save failure, shown on this screen.
+  error: string | null;
 };
-
-const REMINDER_HOURS = [20, 21, 22, 23];
 
 // Parses a whole-number step goal. Returns null when it is not a sensible value.
 function parseStepGoal(raw: string): number | null {
@@ -34,13 +29,12 @@ export function GoalScreen({
   onSetGoal,
   stepGoal,
   onSetStepGoal,
-  reminder,
-  reminderNote,
-  onSetReminder,
-  onTestReminder,
+  error,
 }: Props) {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
   const [input, setInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [inputError, setError] = useState<string | null>(null);
   const [stepInput, setStepInput] = useState('');
   const [stepError, setStepError] = useState<string | null>(null);
 
@@ -73,57 +67,7 @@ export function GoalScreen({
     <View style={styles.wrap}>
       <Text style={styles.title}>目標</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>毎日のリマインダー</Text>
-        <Text style={styles.sub}>
-          {reminder.enabled
-            ? `毎日 ${reminder.hour}:00 に通知します。`
-            : '通知はオフです。'}
-        </Text>
-        <View style={styles.reminderRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onSetReminder({ ...reminder, enabled: !reminder.enabled })}
-            style={[styles.reminderBtn, reminder.enabled && styles.reminderBtnOn]}
-          >
-            <Text style={[styles.reminderText, reminder.enabled && styles.reminderTextOn]}>
-              {reminder.enabled ? 'オフにする' : 'オンにする'}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={styles.reminderRow}>
-          {REMINDER_HOURS.map((h) => (
-            <Pressable
-              key={h}
-              accessibilityRole="button"
-              onPress={() => onSetReminder({ ...reminder, enabled: true, hour: h })}
-              style={[
-                styles.reminderBtn,
-                reminder.enabled && reminder.hour === h && styles.reminderBtnOn,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.reminderText,
-                  reminder.enabled && reminder.hour === h && styles.reminderTextOn,
-                ]}
-              >
-                {h}時
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={styles.reminderRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onTestReminder}
-            style={styles.reminderBtn}
-          >
-            <Text style={styles.reminderText}>1分後にテスト通知</Text>
-          </Pressable>
-        </View>
-        {reminderNote ? <Text style={styles.sub}>{reminderNote}</Text> : null}
-      </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <View style={styles.card}>
         <Text style={styles.label}>目標体重</Text>
@@ -155,7 +99,7 @@ export function GoalScreen({
           />
           <Text style={styles.unit}>kg</Text>
         </View>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {inputError ? <Text style={styles.error}>{inputError}</Text> : null}
 
         <Pressable
           style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
@@ -201,63 +145,41 @@ export function GoalScreen({
         </Pressable>
       </View>
 
-      <Text style={styles.sub}>睡眠の目標は次の段階で追加します。</Text>
+      <Text style={styles.sub}>睡眠は1日7時間を目安に、記録タブで確認できます。</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
   wrap: {
     flex: 1,
     gap: 16,
   },
-  reminderRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingHorizontal: 4,
-  },
-  reminderBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: palette.line,
-  },
-  reminderBtnOn: {
-    backgroundColor: palette.accent,
-  },
-  reminderText: {
-    color: palette.muted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  reminderTextOn: {
-    color: '#FFFFFF',
-  },
   title: {
     fontSize: 22,
     fontWeight: '800',
-    color: palette.fg,
+    color: p.fg,
   },
   card: {
-    backgroundColor: palette.surface,
+    backgroundColor: p.surface,
     borderRadius: 16,
     padding: 16,
     gap: 8,
   },
   label: {
-    color: palette.muted,
+    color: p.muted,
     fontSize: 14,
     fontWeight: '700',
   },
   value: {
-    color: palette.fg,
+    color: p.fg,
     fontSize: 26,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
   sub: {
-    color: palette.muted,
+    color: p.muted,
     fontSize: 13,
   },
   form: {
@@ -268,39 +190,39 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: palette.bg,
+    backgroundColor: p.bg,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: palette.line,
+    borderColor: p.line,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 22,
     fontWeight: '800',
-    color: palette.fg,
+    color: p.fg,
     fontVariant: ['tabular-nums'],
   },
   unit: {
     fontSize: 18,
     fontWeight: '700',
-    color: palette.muted,
+    color: p.muted,
   },
   error: {
-    color: '#B5523B',
+    color: p.error,
     fontSize: 13,
   },
   cta: {
-    backgroundColor: palette.accent,
+    backgroundColor: p.accent,
     borderRadius: 999,
     paddingVertical: 14,
     alignItems: 'center',
   },
   ctaText: {
-    color: '#FFFFFF',
+    color: p.onAccent,
     fontSize: 16,
     fontWeight: '800',
   },
   clear: {
-    color: palette.muted,
+    color: p.muted,
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 4,

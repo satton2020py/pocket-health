@@ -1,21 +1,14 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import {
-  Alert,
-  FlatList,
-  KeyboardAvoidingView,
-  ScrollView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
+import { useEffect, useState, type ComponentType } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
+import { RecordsScreen } from './src/RecordsScreen';
+import { GoalScreen } from './src/GoalScreen';
 import { SettingsScreen } from './src/SettingsScreen';
-import { nightFrom, parseClock, readLastNightSleep, writeSleep } from './src/sleep';
+import { OnboardingScreen } from './src/OnboardingScreen';
+import { nightFrom, readLastNightSleep, readSleepHistory, writeSleep, type SleepNight } from './src/sleep';
+import type { Clock } from './src/pickers';
 import {
   applyReminder,
   DEFAULT_REMINDER,
@@ -24,20 +17,40 @@ import {
   type Reminder,
 } from './src/reminder';
 import { loadLocalGoals, saveLocalGoals } from './src/localGoals';
-import { GoalScreen } from './src/GoalScreen';
-import { WeightChart } from './src/WeightChart';
-import { readRecentSteps, type DailySteps, type StepSource } from './src/healthConnect';
+import {
+  readRecentSteps,
+  requestHealthPermissions,
+  type DailySteps,
+  type StepSource,
+} from './src/healthConnect';
 import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
-import { deleteWeight, loadWeights, saveWeight } from './src/weightStore';
+import { deleteWeight, loadWeights, saveWeight, updateWeight } from './src/weightStore';
 import { loadLocalWeights, saveLocalWeights } from './src/localWeights';
 import { loadGoals, saveGoals } from './src/goalStore';
+import { loadOnboarded, saveOnboarded } from './src/onboarding';
 import type { User } from '@react-native-firebase/auth';
-import { palette } from './src/theme';
+import { type Palette, usePalette, useStyles } from './src/theme';
+import { GoalIcon, RecordsIcon, SettingsIcon, TodayIcon } from './src/icons';
 
-type Tab = 'today' | 'weight' | 'goal' | 'graph' | 'settings';
+type Tab = 'today' | 'records' | 'goal' | 'settings';
+
+const TABS: { key: Tab; label: string; Icon: ComponentType<{ color: string }> }[] = [
+  { key: 'today', label: '今日', Icon: TodayIcon },
+  { key: 'records', label: '記録', Icon: RecordsIcon },
+  { key: 'goal', label: '目標', Icon: GoalIcon },
+  { key: 'settings', label: '設定', Icon: SettingsIcon },
+];
+
+const byNewest = (list: WeightEntry[]) =>
+  [...list].sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime());
 
 export default function App() {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
   const [tab, setTab] = useState<Tab>('today');
+  // null until the first-run flag is read from the phone.
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+
   const [steps, setSteps] = useState(0);
   const [activity, setActivity] = useState({ distanceKm: 0, kcal: 0 });
   const [daily, setDaily] = useState<DailySteps[]>([]);
@@ -45,13 +58,15 @@ export default function App() {
   const [stepSource, setStepSource] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [sleep, setSleep] = useState<{ hours: number; start: Date; end: Date } | null>(null);
+  const [nights, setNights] = useState<SleepNight[]>([]);
   const [sleepMessage, setSleepMessage] = useState<string | null>(null);
   const [reminder, setReminder] = useState<Reminder>(DEFAULT_REMINDER);
   const [reminderNote, setReminderNote] = useState<string | null>(null);
-  const [input, setInput] = useState('');
   const [entries, setEntries] = useState<WeightEntry[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  // Goals. Saved to the cloud when signed in, otherwise they last only until the app closes.
+  // Each screen shows its own errors, so a failure appears where it happened.
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const [goalError, setGoalError] = useState<string | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [goalKg, setGoalKg] = useState<number | null>(null);
   const [stepGoal, setStepGoal] = useState(DEFAULT_STEP_GOAL);
 
@@ -67,18 +82,22 @@ export default function App() {
   // When signed out, show the records kept on this phone.
   useEffect(() => {
     if (user) return;
-    loadLocalWeights().then((local) => {
-      if (local.length > 0) setEntries(local);
-    });
+    loadLocalWeights().then(setEntries);
   }, [user]);
 
-  // When someone signs in, move the phone-only entries to the cloud and show the cloud list.
+  // When someone signs in, move the phone-only records to the cloud with their original
+  // date and time, then show the cloud list. Each moved record is removed from the phone
+  // right away, so a failure part-way through never uploads the same record twice.
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
-        for (const e of entries) await saveWeight(user.uid, e.kg);
-        await saveLocalWeights([]);
+        let remaining = await loadLocalWeights();
+        for (const e of [...remaining]) {
+          await saveWeight(user.uid, e.kg, e.recordedAt);
+          remaining = remaining.filter((r) => r.id !== e.id);
+          await saveLocalWeights(remaining);
+        }
         setEntries(await loadWeights(user.uid));
         const saved = await loadGoals(user.uid);
         if (saved) {
@@ -86,68 +105,46 @@ export default function App() {
           setStepGoal(saved.stepGoal);
           // Use the app the user chose by hand last time, if any.
           if (saved.stepSource) syncFromHealthConnect(saved.stepSource);
+        } else {
+          // First sign-in: keep the goals set on this phone.
+          await saveGoals(user.uid, { goalKg, stepGoal });
         }
-        setError(null);
+        setSettingsError(null);
       } catch {
-        setError('クラウドから読み込めませんでした。');
+        setSettingsError('クラウドとのやり取りに失敗しました。通信を確認して、もう一度ログインしてください。');
       }
     })();
     // Run only when the signed-in user changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Updates a goal on screen and, when signed in, saves it to the cloud.
-  function changeGoalKg(kg: number | null) {
-    setGoalKg(kg);
+  // Updates goals on screen and saves them to the cloud when signed in, otherwise to the phone.
+  function persistGoals(next: { goalKg: number | null; stepGoal: number }) {
+    setGoalError(null);
     if (user) {
-      saveGoals(user.uid, { goalKg: kg, stepGoal }).catch(() =>
-        setError('目標を保存できませんでした。'),
-      );
+      saveGoals(user.uid, next).catch(() => setGoalError('目標を保存できませんでした。'));
     } else {
-      saveLocalGoals({ goalKg: kg, stepGoal });
+      saveLocalGoals(next);
     }
   }
 
-  function changeStepGoal(steps: number) {
-    setStepGoal(steps);
-    if (user) {
-      saveGoals(user.uid, { goalKg, stepGoal: steps }).catch(() =>
-        setError('目標を保存できませんでした。'),
-      );
-    } else {
-      saveLocalGoals({ goalKg, stepGoal: steps });
-    }
+  function changeGoalKg(kg: number | null) {
+    setGoalKg(kg);
+    persistGoals({ goalKg: kg, stepGoal });
+  }
+
+  function changeStepGoal(next: number) {
+    setStepGoal(next);
+    persistGoals({ goalKg, stepGoal: next });
   }
 
   async function login() {
     try {
+      setSettingsError(null);
       const signed = await signInWithGoogle();
       if (signed) setUser(signed);
     } catch {
-      setError('ログインできませんでした。もう一度お試しください。');
-    }
-  }
-
-  // Asks first, because a mistyped weight is easy to tap by accident.
-  function confirmRemove(id: string) {
-    Alert.alert('この記録を削除しますか？', '削除すると元に戻せません。', [
-      { text: 'キャンセル', style: 'cancel' },
-      { text: '削除', style: 'destructive', onPress: () => removeEntry(id) },
-    ]);
-  }
-
-  async function removeEntry(id: string) {
-    try {
-      if (user) {
-        await deleteWeight(user.uid, id);
-        setEntries((prev) => prev.filter((e) => e.id !== id));
-      } else {
-        const next = entries.filter((e) => e.id !== id);
-        setEntries(next);
-        await saveLocalWeights(next);
-      }
-    } catch {
-      setError('削除できませんでした。もう一度お試しください。');
+      setSettingsError('ログインできませんでした。もう一度お試しください。');
     }
   }
 
@@ -157,45 +154,67 @@ export default function App() {
     setUser(null);
   }
 
-  async function record() {
-    const kg = parseWeightInput(input);
-    if (kg === null) {
-      setError('kgの数字を入力してください（小数点2位まで）。');
-      return;
-    }
-    setInput('');
-    setError(null);
-    if (user) {
-      try {
-        await saveWeight(user.uid, kg);
+  // Adds a weight at the given time. Returns true when saved.
+  async function addWeight(kg: number, at: Date): Promise<boolean> {
+    setWeightError(null);
+    try {
+      if (user) {
+        await saveWeight(user.uid, kg, at);
         setEntries(await loadWeights(user.uid));
-      } catch {
-        setError('保存できませんでした。もう一度お試しください。');
+      } else {
+        const next = byNewest([{ id: String(Date.now()), kg, recordedAt: at }, ...entries]);
+        setEntries(next);
+        await saveLocalWeights(next);
       }
-      return;
+      return true;
+    } catch {
+      setWeightError('保存できませんでした。もう一度お試しください。');
+      return false;
     }
-    const next = [
-      { id: String(Date.now()), kg, recordedAt: new Date() },
-      ...entries,
-    ];
-    setEntries(next);
-    await saveLocalWeights(next);
+  }
+
+  // Changes a saved weight or its time. Returns true when saved.
+  async function editWeight(id: string, kg: number, at: Date): Promise<boolean> {
+    setWeightError(null);
+    try {
+      const next = byNewest(entries.map((e) => (e.id === id ? { ...e, kg, recordedAt: at } : e)));
+      if (user) await updateWeight(user.uid, id, kg, at);
+      else await saveLocalWeights(next);
+      setEntries(next);
+      return true;
+    } catch {
+      setWeightError('修正できませんでした。もう一度お試しください。');
+      return false;
+    }
+  }
+
+  async function removeWeight(id: string) {
+    setWeightError(null);
+    try {
+      const next = entries.filter((e) => e.id !== id);
+      if (user) await deleteWeight(user.uid, id);
+      else await saveLocalWeights(next);
+      setEntries(next);
+    } catch {
+      setWeightError('削除できませんでした。もう一度お試しください。');
+    }
   }
 
   // Called only when the user taps an app by hand. Remembers that choice when signed in.
   function selectSource(origin: string) {
     if (user) {
       saveGoals(user.uid, { stepSource: origin }).catch(() =>
-        setError('歩数のデータ元を保存できませんでした。'),
+        setSettingsError('歩数のデータ元を保存できませんでした。'),
       );
     }
     syncFromHealthConnect(origin);
   }
 
-  // Picks which app's steps to use, then re-reads. Only one app is used, so nothing is double counted.
-  // Reads last night's sleep. Shown separately, so a sleep problem never hides the steps.
+  // Reads last night's sleep and the last 7 nights. Shown separately, so a sleep problem
+  // never hides the steps.
   async function syncSleep() {
-    const r = await readLastNightSleep();
+    const [r, history] = await Promise.all([readLastNightSleep(), readSleepHistory(7)]);
+    setNights(history.ok ? history.nights : []);
     if (r.ok) {
       setSleep(r.night);
       setSleepMessage(r.night ? null : '昨夜の睡眠記録はありません。');
@@ -204,17 +223,14 @@ export default function App() {
     setSleep(null);
     setSleepMessage(
       r.reason === 'denied'
-        ? '睡眠の読み取りが許可されていません。'
+        ? '睡眠の読み取りが許可されていません。設定タブから許可できます。'
         : '睡眠を取得できませんでした。',
     );
   }
 
-  // Saves a sleep time typed by the user to Health Connect, then shows it on the card.
+  // Saves a sleep time picked by the user to Health Connect, then shows it on the card.
   // Returns an error message to show in the form, or null when saved.
-  async function saveManualSleep(bedText: string, wakeText: string): Promise<string | null> {
-    const bed = parseClock(bedText);
-    const wake = parseClock(wakeText);
-    if (!bed || !wake) return '時刻は 23:30 のように入力してください。';
+  async function saveManualSleep(bed: Clock, wake: Clock): Promise<string | null> {
     const { start, end } = nightFrom(bed, wake);
     const error = await writeSleep(start, end);
     if (error) return error;
@@ -222,7 +238,7 @@ export default function App() {
     return null;
   }
 
-  // Sends one test notification about a minute from now.
+  // Sends one test notification about a minute from now. Only offered in development builds.
   async function testReminder() {
     setReminderNote(null);
     try {
@@ -252,9 +268,9 @@ export default function App() {
     }
   }
 
+  // Reads steps first and sleep after, one at a time.
   async function syncFromHealthConnect(preferred: string | null = stepSource) {
     setSyncMessage('Health Connectから取得しています…');
-    syncSleep();
     const result = await readRecentSteps(7, preferred);
     if (result.ok) {
       setDaily(result.daily);
@@ -263,84 +279,82 @@ export default function App() {
       setStepSource(result.chosen);
       setSteps(result.daily[result.daily.length - 1]?.steps ?? 0);
       setSyncMessage(result.activityDetail ? `距離・カロリー ${result.activityDetail}` : null);
-      return;
+    } else {
+      const text =
+        result.reason === 'denied'
+          ? '歩数の読み取りが許可されていません。'
+          : result.reason === 'unsupported'
+            ? 'このデバイスでは使えません。'
+            : 'Health Connectから取得できませんでした。';
+      setSyncMessage(result.detail ? `${text}（${result.detail}）` : text);
     }
-    const text =
-      result.reason === 'denied'
-        ? '歩数の読み取りが許可されていません。'
-        : result.reason === 'unsupported'
-          ? 'このデバイスでは使えません。'
-          : 'Health Connectから取得できませんでした。';
-    setSyncMessage(result.detail ? `${text}（${result.detail}）` : text);
+    await syncSleep();
+  }
+
+  // Asks for every Health Connect permission in one screen, then reads the data.
+  async function allowAndSync() {
+    const r = await requestHealthPermissions();
+    if (!r.ok && r.reason !== 'unsupported') {
+      setSyncMessage('Health Connectを開けませんでした。Health Connectアプリが入っているか確認してください。');
+    }
+    await syncFromHealthConnect();
+  }
+
+  async function finishOnboarding(allow: boolean) {
+    await saveOnboarded();
+    setOnboarded(true);
+    if (allow) await allowAndSync();
+    else await syncFromHealthConnect();
   }
 
   useEffect(() => {
-    syncFromHealthConnect();
     loadReminder().then(setReminder);
     loadLocalGoals().then((local) => {
       if (!local) return;
       setGoalKg(local.goalKg);
       setStepGoal(local.stepGoal);
     });
+    loadOnboarded().then((done) => {
+      setOnboarded(done);
+      // Only read what is already allowed. The first-run screen asks for permission.
+      if (done) syncFromHealthConnect();
+    });
+    // Run once on start.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (onboarded === null) {
+    return <View style={styles.container} />;
+  }
+
+  if (!onboarded) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="auto" />
+        <View style={styles.body}>
+          <OnboardingScreen onAllow={() => finishOnboarding(true)} onSkip={() => finishOnboarding(false)} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar style="dark" />
-      <View style={styles.tabs}>
-        <Pressable
-          onPress={() => setTab('today')}
-          accessibilityRole="tab"
-          style={[styles.tab, tab === 'today' && styles.tabOn]}
-        >
-          <Text style={[styles.tabText, tab === 'today' && styles.tabTextOn]}>
-            今日
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setTab('weight')}
-          accessibilityRole="tab"
-          style={[styles.tab, tab === 'weight' && styles.tabOn]}
-        >
-          <Text style={[styles.tabText, tab === 'weight' && styles.tabTextOn]}>
-            体重
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setTab('goal')}
-          accessibilityRole="tab"
-          style={[styles.tab, tab === 'goal' && styles.tabOn]}
-        >
-          <Text style={[styles.tabText, tab === 'goal' && styles.tabTextOn]}>
-            目標
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setTab('graph')}
-          accessibilityRole="tab"
-          style={[styles.tab, tab === 'graph' && styles.tabOn]}
-        >
-          <Text style={[styles.tabText, tab === 'graph' && styles.tabTextOn]}>
-            グラフ
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setTab('settings')}
-          accessibilityRole="tab"
-          style={[styles.tab, tab === 'settings' && styles.tabOn]}
-        >
-          <Text style={[styles.tabText, tab === 'settings' && styles.tabTextOn]}>
-            設定
-          </Text>
-        </Pressable>
-      </View>
-
-      {tab === 'today' ? (
-        <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
+      <StatusBar style="auto" />
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+      >
+        {tab === 'today' ? (
           <TodayScreen
+            latest={latestEntry}
+            goalKg={goalKg}
+            onAddWeight={addWeight}
+            weightError={weightError}
             steps={steps}
             stepGoal={stepGoal}
             daily={daily}
@@ -349,242 +363,81 @@ export default function App() {
             sleepMessage={sleepMessage}
             onSaveSleep={saveManualSleep}
           />
-        </ScrollView>
-      ) : tab === 'goal' ? (
-        <ScrollView
-          contentContainerStyle={{ gap: 16, paddingBottom: 32 }}
-          keyboardShouldPersistTaps="handled"
-        >
+        ) : tab === 'records' ? (
+          <RecordsScreen
+            entries={entries}
+            goalKg={goalKg}
+            onUpdateWeight={editWeight}
+            onRemoveWeight={removeWeight}
+            weightError={weightError}
+            nights={nights}
+            sleepMessage={sleepMessage}
+          />
+        ) : tab === 'goal' ? (
           <GoalScreen
             goalKg={goalKg}
             latest={latestEntry}
             onSetGoal={changeGoalKg}
             stepGoal={stepGoal}
             onSetStepGoal={changeStepGoal}
+            error={goalError}
+          />
+        ) : (
+          <SettingsScreen
+            signedIn={user !== null}
+            onLogin={login}
+            onLogout={logout}
             reminder={reminder}
             reminderNote={reminderNote}
             onSetReminder={changeReminder}
             onTestReminder={testReminder}
-          />
-        </ScrollView>
-      ) : tab === 'settings' ? (
-        <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
-          <SettingsScreen
             sources={sources}
             chosen={stepSource}
             onSelectSource={selectSource}
             syncMessage={syncMessage}
-            onResync={() => syncFromHealthConnect()}
+            onResync={allowAndSync}
+            error={settingsError}
           />
-        </ScrollView>
-      ) : tab === 'graph' ? (
-        <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
-          <WeightChart entries={entries} goalKg={goalKg} />
-        </ScrollView>
-      ) : (
-        <>
-          <View style={styles.authRow}>
-            <Text style={styles.authText}>
-              {user ? 'ログイン中（クラウドに保存）' : 'ログインすると機種変後も残ります'}
-            </Text>
+        )}
+      </ScrollView>
+
+      <View style={styles.tabBar} accessibilityRole="tablist">
+        {TABS.map(({ key, label, Icon }) => {
+          const on = tab === key;
+          const color = on ? palette.accent : palette.muted;
+          return (
             <Pressable
-              style={styles.smallBtn}
-              onPress={user ? logout : login}
-              accessibilityRole="button"
+              key={key}
+              onPress={() => setTab(key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={label}
+              style={styles.tab}
             >
-              <Text style={styles.ctaText}>{user ? 'ログアウト' : 'Googleでログイン'}</Text>
+              <Icon color={color} />
+              <Text style={[styles.tabText, { color }]}>{label}</Text>
             </Pressable>
-          </View>
-          <Text style={styles.title}>体重を記録</Text>
-
-          <View style={styles.form}>
-            <TextInput
-              style={styles.input}
-              value={input}
-              onChangeText={(text) => {
-                setInput(text);
-                setError(null);
-              }}
-              keyboardType="decimal-pad"
-              placeholder="62.45"
-              placeholderTextColor={palette.placeholder}
-              accessibilityLabel="体重（kg）"
-            />
-            <Text style={styles.unit}>kg</Text>
-          </View>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <Pressable
-            style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
-            onPress={record}
-            accessibilityRole="button"
-          >
-            <Text style={styles.ctaText}>記録する</Text>
-          </Pressable>
-
-          <FlatList
-            style={styles.list}
-            data={entries}
-            keyExtractor={(item) => item.id}
-            ListEmptyComponent={
-              <Text style={styles.muted}>まだ記録がありません。</Text>
-            }
-            renderItem={({ item }) => (
-              <View style={styles.row}>
-                <Text style={styles.rowDate}>
-                  {item.recordedAt.toLocaleString('ja-JP', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </Text>
-                <View style={styles.rowRight}>
-                  <Text style={styles.rowValue}>{formatWeight(item.kg)} kg</Text>
-                  <Pressable
-                    onPress={() => confirmRemove(item.id)}
-                    accessibilityRole="button"
-                    accessibilityLabel="この記録を削除"
-                    hitSlop={8}
-                  >
-                    <Text style={styles.deleteText}>削除</Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
-          />
-        </>
-      )}
+          );
+        })}
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: palette.bg,
-    paddingTop: 72,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    gap: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: palette.fg,
-  },
-  form: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: palette.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: palette.line,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 28,
-    fontWeight: '800',
-    color: palette.fg,
-    fontVariant: ['tabular-nums'],
-  },
-  unit: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: palette.muted,
-  },
-  error: {
-    color: '#B5523B',
-    fontSize: 13,
-  },
-  cta: {
-    backgroundColor: palette.accent,
-    borderRadius: 999,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  ctaText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  list: {
-    flex: 1,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: palette.surface,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 8,
-  },
-  rowDate: {
-    color: palette.muted,
-    fontSize: 14,
-  },
-  rowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  deleteText: {
-    color: palette.muted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  rowValue: {
-    color: palette.fg,
-    fontSize: 16,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  muted: {
-    color: palette.muted,
-    textAlign: 'center',
-    marginTop: 24,
-  },
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: palette.line,
-    borderRadius: 999,
-    padding: 4,
-  },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  tabOn: {
-    backgroundColor: palette.surface,
-  },
-  tabText: {
-    color: palette.muted,
-    fontWeight: '700',
-  },
-  tabTextOn: {
-    color: palette.fg,
-  },
-  authRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  authText: {
-    flex: 1,
-    color: palette.muted,
-    fontSize: 13,
-  },
-  smallBtn: {
-    backgroundColor: palette.accent,
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-  },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: p.bg },
+    body: { flex: 1, paddingTop: 56, paddingHorizontal: 20 },
+    scroll: { paddingBottom: 32 },
+    tabBar: {
+      flexDirection: 'row',
+      backgroundColor: p.surface,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: p.line,
+      paddingTop: 8,
+      // Room for the phone's own navigation bar under the app.
+      paddingBottom: 28,
+    },
+    tab: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 },
+    tabText: { fontSize: 12, fontWeight: '700' },
+  });

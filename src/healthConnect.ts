@@ -3,6 +3,7 @@ import {
   getSdkStatus,
   initialize,
   aggregateRecord,
+  getGrantedPermissions,
   readRecords,
   requestPermission,
   SdkAvailabilityStatus,
@@ -65,11 +66,9 @@ export async function readRecentSteps(
     const initialized = await initialize();
     if (!initialized) return { ok: false, reason: 'unavailable', detail: 'initialize=false' };
 
-    const granted = await requestPermission([
-      { accessType: 'read', recordType: 'Steps' },
-      { accessType: 'read', recordType: 'Distance' },
-      { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
-    ]);
+    // Only checks what is already allowed. Asking is done once, from the first-run screen
+    // or the settings tab, so opening the app never pops up a permission screen by surprise.
+    const granted = await getGrantedPermissions();
     const canReadSteps = granted.some(
       (p) => p.accessType === 'read' && p.recordType === 'Steps',
     );
@@ -192,5 +191,30 @@ export async function readRecentSteps(
     };
   } catch (e) {
     return { ok: false, reason: 'error', detail: String((e as Error)?.message ?? e) };
+  }
+}
+
+// Every Health Connect permission the app uses, asked for in one screen.
+const ALL_PERMISSIONS = [
+  { accessType: 'read', recordType: 'Steps' },
+  { accessType: 'read', recordType: 'Distance' },
+  { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
+  { accessType: 'read', recordType: 'SleepSession' },
+  { accessType: 'write', recordType: 'SleepSession' },
+] as const;
+
+// Asks for all permissions at once. Returns a reason when Health Connect cannot be used.
+export async function requestHealthPermissions(): Promise<
+  { ok: true } | { ok: false; reason: 'unsupported' | 'unavailable' | 'error' }
+> {
+  if (Platform.OS !== 'android') return { ok: false, reason: 'unsupported' };
+  try {
+    const status = await getSdkStatus();
+    if (status !== SdkAvailabilityStatus.SDK_AVAILABLE) return { ok: false, reason: 'unavailable' };
+    if (!(await initialize())) return { ok: false, reason: 'unavailable' };
+    await requestPermission([...ALL_PERMISSIONS]);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'error' };
   }
 }

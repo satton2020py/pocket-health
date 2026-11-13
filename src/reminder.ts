@@ -40,7 +40,7 @@ export async function applyReminder(r: Reminder): Promise<boolean> {
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'ポケットヘルス',
-      body: '今日の体重と歩数を確認しましょう。',
+      body: '体重と睡眠を記録しましょう。',
     },
     trigger: {
       type: SchedulableTriggerInputTypes.DAILY,
