@@ -160,8 +160,12 @@ export default function App() {
       setSettingsError(null);
       const signed = await signInWithGoogle();
       if (signed) setUser(signed);
-    } catch {
-      setSettingsError('ログインできませんでした。もう一度お試しください。');
+    } catch (e) {
+      // Show the error code too, so a setup problem (for example DEVELOPER_ERROR when the
+      // app's signing key is not registered in Firebase) can be told apart from a network one.
+      const err = e as { code?: string | number; message?: string };
+      const detail = err?.code ?? err?.message ?? String(e);
+      setSettingsError(`ログインできませんでした（${detail}）。もう一度お試しください。`);
     }
   }
 
