@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { type Palette, usePalette, useStyles } from './theme';
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
 import { forecastGoal, weightTrend } from './trend';
 import { WeightInput } from './WeightInput';
+import { bmi, bmiLabel, milestones } from './insights';
 
 type Props = {
   goalKg: number | null;
@@ -13,6 +14,8 @@ type Props = {
   onSetStepGoal: (steps: number) => void;
   sleepGoal: number;
   onSetSleepGoal: (hours: number) => void;
+  heightCm: number | null;
+  onSetHeight: (cm: number | null) => void;
   // A save failure, shown on this screen.
   error: string | null;
 };
@@ -41,6 +44,8 @@ export function GoalScreen({
   onSetStepGoal,
   sleepGoal,
   onSetSleepGoal,
+  heightCm,
+  onSetHeight,
   error,
 }: Props) {
   const styles = useStyles(makeStyles);
@@ -52,6 +57,12 @@ export function GoalScreen({
   );
   const [inputError, setError] = useState<string | null>(null);
   const [stepInput, setStepInput] = useState('');
+  const [heightInput, setHeightInput] = useState(heightCm !== null ? String(heightCm) : '');
+  const [heightError, setHeightError] = useState<string | null>(null);
+  // Fill the field once the saved height has loaded.
+  useEffect(() => {
+    if (heightCm !== null) setHeightInput(String(heightCm));
+  }, [heightCm]);
   const [stepError, setStepError] = useState<string | null>(null);
 
   function save() {
@@ -62,6 +73,16 @@ export function GoalScreen({
     }
     setError(null);
     onSetGoal(kg);
+  }
+
+  function saveHeight() {
+    const cm = Number(heightInput.trim().replace(',', '.'));
+    if (!/^\d{2,3}(\.\d)?$/.test(heightInput.trim().replace(',', '.')) || cm < 100 || cm > 230) {
+      setHeightError('100〜230cmの数字を入力してください（小数点1位まで）。');
+      return;
+    }
+    setHeightError(null);
+    onSetHeight(cm);
   }
 
   function saveSteps() {
@@ -121,6 +142,17 @@ export function GoalScreen({
             <Text style={styles.sub}>
               最初の記録 {formatWeight(first.kg)} kg から {Math.round(progress * 100)}% 進みました
             </Text>
+          </View>
+        ) : null}
+
+        {goalKg !== null && first !== null && trend !== null && first.kg > goalKg ? (
+          <View style={styles.steps}>
+            <Text style={styles.label}>1kgごとの小さな目標</Text>
+            {milestones(first.kg, goalKg, trend.averageKg).map((m) => (
+              <Text key={m.kg} style={[styles.stepRow, m.reached && styles.stepDone]}>
+                {m.reached ? '✓' : '・'} {formatWeight(m.kg)} kg{m.kg === goalKg ? '（目標）' : ''}
+              </Text>
+            ))}
           </View>
         ) : null}
 
@@ -220,6 +252,40 @@ export function GoalScreen({
         </View>
         <Text style={styles.sub}>記録タブの睡眠グラフに、この時間の線が出ます。</Text>
       </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>身長（BMIの計算に使います）</Text>
+        <Text style={styles.value}>{heightCm !== null ? `${heightCm} cm` : '未設定'}</Text>
+        {heightCm !== null && trend !== null ? (
+          <Text style={styles.sub}>
+            今のBMI {bmi(trend.averageKg, heightCm).toFixed(1)}（{bmiLabel(bmi(trend.averageKg, heightCm))}）
+            {goalKg !== null ? ` ／ 目標体重でのBMI ${bmi(goalKg, heightCm).toFixed(1)}` : ''}
+          </Text>
+        ) : null}
+        <View style={styles.form}>
+          <TextInput
+            style={styles.input}
+            value={heightInput}
+            onChangeText={(text) => {
+              setHeightInput(text);
+              setHeightError(null);
+            }}
+            keyboardType="decimal-pad"
+            placeholder="例: 170"
+            placeholderTextColor={palette.placeholder}
+            accessibilityLabel="身長（cm）"
+          />
+          <Text style={styles.unit}>cm</Text>
+        </View>
+        {heightError ? <Text style={styles.error}>{heightError}</Text> : null}
+        <Pressable
+          style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
+          onPress={saveHeight}
+          accessibilityRole="button"
+        >
+          <Text style={styles.ctaText}>身長を保存する</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -274,6 +340,19 @@ const makeStyles = (p: Palette) =>
     fontWeight: '800',
     color: p.fg,
     fontVariant: ['tabular-nums'],
+  },
+  steps: {
+    gap: 4,
+    marginTop: 4,
+  },
+  stepRow: {
+    color: p.muted,
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  stepDone: {
+    color: p.accent,
+    fontWeight: '800',
   },
   formTop: {
     marginTop: 8,

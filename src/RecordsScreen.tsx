@@ -9,6 +9,7 @@ import { DateTimePicker, dayLabel } from './pickers';
 import type { SleepNight } from './sleep';
 import type { DailySteps } from './healthConnect';
 import { StepsChart } from './StepsChart';
+import { bedtimeSpread, clockFromEvening } from './insights';
 
 type Props = {
   entries: WeightEntry[];
@@ -180,6 +181,7 @@ function SleepRecords({
   const average =
     withData.length > 0 ? withData.reduce((s, n) => s + n.hours, 0) / withData.length : 0;
   const reached = nights.filter((n) => n.hours >= SLEEP_TARGET_HOURS).length;
+  const spread = bedtimeSpread(nights);
   const chartW = Math.max(240, windowWidth - 72);
   const chartMax = Math.max(SLEEP_TARGET_HOURS + 1, ...nights.map((n) => n.hours)) * 1.1;
   const barY = (h: number) => CHART_H - (h / chartMax) * CHART_H;
@@ -246,6 +248,22 @@ function SleepRecords({
           })}
         </Svg>
       </View>
+
+      {spread ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>就寝時刻のばらつき</Text>
+          <Text style={styles.sub}>
+            平均 {clockFromEvening(spread.averageMin)} ごろ ／ ばらつき 約±{spread.spreadMin}分（{spread.count}日分）
+          </Text>
+          <Text style={styles.sub}>
+            {spread.spreadMin <= 30
+              ? '寝る時間がよくそろっています。'
+              : spread.spreadMin <= 60
+                ? '寝る時間が日によって少し動いています。'
+                : '寝る時間が日によって1時間以上動いています。そろえると眠りの質が上がりやすくなります。'}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>睡眠の記録</Text>

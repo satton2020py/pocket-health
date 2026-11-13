@@ -92,6 +92,8 @@ export default function App() {
   const [goalKg, setGoalKg] = useState<number | null>(null);
   const [stepGoal, setStepGoal] = useState(DEFAULT_STEP_GOAL);
   const [sleepGoal, setSleepGoal] = useState(DEFAULT_SLEEP_GOAL);
+  // Height for BMI. Null until the user enters it.
+  const [heightCm, setHeightCm] = useState<number | null>(null);
 
   const [user, setUser] = useState<User | null>(null);
 
@@ -127,11 +129,12 @@ export default function App() {
           setGoalKg(saved.goalKg);
           setStepGoal(saved.stepGoal);
           setSleepGoal(saved.sleepGoal);
+          setHeightCm(saved.heightCm);
           // Use the app the user chose by hand last time, if any.
           if (saved.stepSource) syncFromHealthConnect(saved.stepSource);
         } else {
           // First sign-in: keep the goals set on this phone.
-          await saveGoals(user.uid, { goalKg, stepGoal, sleepGoal });
+          await saveGoals(user.uid, { goalKg, stepGoal, sleepGoal, heightCm });
         }
         setSettingsError(null);
       } catch {
@@ -142,9 +145,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Updates goals on screen and saves them to the cloud when signed in, otherwise to the phone.
-  function persistGoals(next: { goalKg: number | null; stepGoal: number; sleepGoal: number }) {
+  // Saves goals to the cloud when signed in, otherwise to the phone. `patch` holds the
+  // changed values; the rest come from the screen.
+  function persistGoals(patch: Partial<{ goalKg: number | null; stepGoal: number; sleepGoal: number; heightCm: number | null }>) {
     setGoalError(null);
+    const next = { goalKg, stepGoal, sleepGoal, heightCm, ...patch };
     if (user) {
       saveGoals(user.uid, next).catch(() => setGoalError('目標を保存できませんでした。'));
     } else {
@@ -154,17 +159,22 @@ export default function App() {
 
   function changeGoalKg(kg: number | null) {
     setGoalKg(kg);
-    persistGoals({ goalKg: kg, stepGoal, sleepGoal });
+    persistGoals({ goalKg: kg });
   }
 
   function changeStepGoal(next: number) {
     setStepGoal(next);
-    persistGoals({ goalKg, stepGoal: next, sleepGoal });
+    persistGoals({ stepGoal: next });
   }
 
   function changeSleepGoal(next: number) {
     setSleepGoal(next);
-    persistGoals({ goalKg, stepGoal, sleepGoal: next });
+    persistGoals({ sleepGoal: next });
+  }
+
+  function changeHeight(cm: number | null) {
+    setHeightCm(cm);
+    persistGoals({ heightCm: cm });
   }
 
   // Shows the goals kept on this phone, or the defaults when there are none.
@@ -173,6 +183,7 @@ export default function App() {
     setGoalKg(local?.goalKg ?? null);
     setStepGoal(local?.stepGoal ?? DEFAULT_STEP_GOAL);
     setSleepGoal(local?.sleepGoal ?? DEFAULT_SLEEP_GOAL);
+    setHeightCm(local?.heightCm ?? null);
   }
 
   async function login() {
@@ -462,6 +473,10 @@ export default function App() {
             steps={steps}
             stepGoal={stepGoal}
             stepsStatus={stepsStatus}
+            heightCm={heightCm}
+            nights={nights}
+            daily={daily}
+            sleepGoal={sleepGoal}
             onAllowHealth={allowAndSync}
             activity={activity}
             sleep={sleep}
@@ -490,6 +505,8 @@ export default function App() {
             onSetStepGoal={changeStepGoal}
             sleepGoal={sleepGoal}
             onSetSleepGoal={changeSleepGoal}
+            heightCm={heightCm}
+            onSetHeight={changeHeight}
             error={goalError}
           />
         ) : (

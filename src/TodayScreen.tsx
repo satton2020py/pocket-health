@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { type Palette, usePalette, useStyles } from './theme';
@@ -6,6 +7,9 @@ import { type Clock, clockText, DateTimePicker, dayLabel, TimePicker } from './p
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
 import { useWeightText, WeightInput } from './WeightInput';
 import { weightTrend } from './trend';
+import { bmi, bmiLabel, milestones, recordStreak, weekKey } from './insights';
+import type { DailySteps } from './healthConnect';
+import type { SleepNight } from './sleep';
 
 export const DEFAULT_STEP_GOAL = 8000;
 
@@ -21,6 +25,10 @@ type Props = {
   steps: number;
   stepGoal: number;
   stepsStatus: StepsStatus;
+  heightCm: number | null;
+  nights: SleepNight[];
+  daily: DailySteps[];
+  sleepGoal: number;
   onAllowHealth: () => void;
   activity: { distanceKm: number; kcal: number };
   sleep: { hours: number; start: Date; end: Date } | null;
@@ -49,10 +57,12 @@ function WeightCard({
   entries,
   latest,
   goalKg,
+  heightCm,
   onAdd,
   error,
 }: {
   entries: WeightEntry[];
+  heightCm: number | null;
   latest: WeightEntry | null;
   goalKg: number | null;
   onAdd: Props['onAddWeight'];
@@ -84,6 +94,14 @@ function WeightCard({
   const trend = weightTrend(entries);
   const remaining = goalKg !== null && trend !== null ? trend.averageKg - goalKg : null;
   const change = trend?.weekChangeKg ?? null;
+  const streak = recordStreak(entries);
+  // The next 1 kg step on the way to the goal, from the Goal tab's list.
+  const first = entries.length > 0 ? entries.reduce((a, b) => (a.recordedAt < b.recordedAt ? a : b)) : null;
+  const nextStep =
+    goalKg !== null && first !== null && trend !== null
+      ? milestones(first.kg, goalKg, trend.averageKg).find((m) => !m.reached) ?? null
+      : null;
+  const bmiValue = heightCm !== null && trend !== null ? bmi(trend.averageKg, heightCm) : null;
 
   return (
     <View style={styles.card}>
@@ -107,9 +125,20 @@ function WeightCard({
                 : ' ／ 目標に到達しています'
               : ''}
           </Text>
+          {nextStep && nextStep.kg !== goalKg ? (
+            <Text style={styles.sub}>
+              次の小さな目標 {formatWeight(nextStep.kg)} kg（あと {formatWeight(trend.averageKg - nextStep.kg)} kg）
+            </Text>
+          ) : null}
+          {bmiValue !== null ? (
+            <Text style={styles.sub}>
+              BMI {bmiValue.toFixed(1)}（{bmiLabel(bmiValue)}）
+            </Text>
+          ) : null}
           {latest ? (
             <Text style={styles.sub}>
               前回 {formatWeight(latest.kg)} kg（{dayLabel(latest.recordedAt)} {timeOf(latest.recordedAt)}）
+              {streak >= 2 ? ` ／ ${streak}日連続で記録中` : ''}
             </Text>
           ) : null}
         </>
@@ -210,6 +239,86 @@ function SleepCard({
           <Text style={styles.link}>手で入力</Text>
         </Pressable>
       )}
+    </View>
+  );
+}
+
+const REVIEW_KEY = 'weekReview.closed.v1';
+
+// A look back at the last 7 days, shown on Sunday and Monday until closed.
+function WeekReview({
+  entries,
+  daily,
+  nights,
+  stepGoal,
+  sleepGoal,
+}: {
+  entries: WeightEntry[];
+  daily: DailySteps[];
+  nights: SleepNight[];
+  stepGoal: number;
+  sleepGoal: number;
+}) {
+  const styles = useStyles(makeStyles);
+  const now = new Date();
+  const showToday = now.getDay() === 0 || now.getDay() === 1;
+  // The same id on Sunday and the Monday after, so closing it once hides it for both days.
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const id = weekKey(yesterday);
+  const [closed, setClosed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(REVIEW_KEY)
+      .then((v) => setClosed(v === id))
+      .catch(() => setClosed(false));
+  }, [id]);
+
+  if (!showToday || closed !== false) return null;
+
+  const trend = weightTrend(entries);
+  const stepDays = daily.filter((d) => d.steps > 0);
+  const stepAvg =
+    stepDays.length > 0 ? Math.round(stepDays.reduce((s, d) => s + d.steps, 0) / stepDays.length) : null;
+  const stepReached = daily.filter((d) => d.steps >= stepGoal).length;
+  const sleepDays = nights.filter((n) => n.hours > 0);
+  const sleepAvg =
+    sleepDays.length > 0 ? sleepDays.reduce((s, n) => s + n.hours, 0) / sleepDays.length : null;
+  const sleepReached = nights.filter((n) => n.hours >= sleepGoal).length;
+
+  function close() {
+    setClosed(true);
+    AsyncStorage.setItem(REVIEW_KEY, id).catch(() => {});
+  }
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>この1週間のふりかえり</Text>
+      <Text style={styles.sub}>
+        体重：
+        {trend
+          ? `平均 ${formatWeight(trend.averageKg)} kg${
+              trend.weekChangeKg !== null
+                ? `（前の週より ${trend.weekChangeKg > 0 ? '+' : ''}${formatWeight(trend.weekChangeKg)} kg）`
+                : ''
+            }`
+          : '記録なし'}
+      </Text>
+      <Text style={styles.sub}>
+        歩数：
+        {stepAvg !== null
+          ? `平均 ${stepAvg.toLocaleString('ja-JP')}歩、目標達成 ${stepReached}/${daily.length}日`
+          : '記録なし'}
+      </Text>
+      <Text style={styles.sub}>
+        睡眠：
+        {sleepAvg !== null
+          ? `平均 ${sleepAvg.toFixed(1)}時間、${sleepGoal}時間以上 ${sleepReached}/${nights.length}日`
+          : '記録なし'}
+      </Text>
+      <Pressable onPress={close} accessibilityRole="button" hitSlop={6}>
+        <Text style={styles.link}>閉じる</Text>
+      </Pressable>
     </View>
   );
 }
@@ -317,7 +426,16 @@ export function TodayScreen(props: Props) {
         onAllow={props.onAllowHealth}
       />
 
+      <WeekReview
+        entries={props.entries}
+        daily={props.daily}
+        nights={props.nights}
+        stepGoal={props.stepGoal}
+        sleepGoal={props.sleepGoal}
+      />
+
       <WeightCard
+        heightCm={props.heightCm}
         entries={props.entries}
         latest={props.latest}
         goalKg={props.goalKg}
