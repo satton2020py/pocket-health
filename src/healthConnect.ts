@@ -20,6 +20,8 @@ export type StepsResult =
       sources: StepSource[];
       chosen: string | null;
       today: { distanceKm: number; kcal: number };
+      // Why distance or calories show 0, or null when both were read.
+      activityDetail: string | null;
     }
   | { ok: false; reason: 'unsupported' | 'unavailable' | 'denied' | 'error'; detail?: string };
 
@@ -139,6 +141,8 @@ export async function readRecentSteps(
     const originFilter = chosen ? { dataOriginFilter: [chosen] } : {};
     let distanceKm = 0;
     let kcal = 0;
+    // Collects why distance or calories could not be shown, so the screen can say so.
+    const problems: string[] = [];
     try {
       const dist = await aggregateRecord({
         recordType: 'Distance',
@@ -146,8 +150,9 @@ export async function readRecentSteps(
         ...originFilter,
       });
       distanceKm = dist.DISTANCE?.inKilometers ?? 0;
-    } catch {
-      distanceKm = 0;
+      if (distanceKm === 0) problems.push('距離: 今日の記録がありません');
+    } catch (e) {
+      problems.push(`距離: ${String((e as Error)?.message ?? e)}`);
     }
     try {
       const cal = await aggregateRecord({
@@ -156,11 +161,19 @@ export async function readRecentSteps(
         ...originFilter,
       });
       kcal = cal.ACTIVE_CALORIES_TOTAL?.inKilocalories ?? 0;
-    } catch {
-      kcal = 0;
+      if (kcal === 0) problems.push('カロリー: 今日の記録がありません');
+    } catch (e) {
+      problems.push(`カロリー: ${String((e as Error)?.message ?? e)}`);
     }
 
-    return { ok: true, daily, sources, chosen, today: { distanceKm, kcal } };
+    return {
+      ok: true,
+      daily,
+      sources,
+      chosen,
+      today: { distanceKm, kcal },
+      activityDetail: problems.length > 0 ? problems.join(' / ') : null,
+    };
   } catch (e) {
     return { ok: false, reason: 'error', detail: String((e as Error)?.message ?? e) };
   }

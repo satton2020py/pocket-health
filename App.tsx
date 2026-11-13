@@ -15,7 +15,13 @@ import {
 import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
 import { nightFrom, parseClock, readLastNightSleep, writeSleep } from './src/sleep';
-import { applyReminder, DEFAULT_REMINDER, loadReminder, type Reminder } from './src/reminder';
+import {
+  applyReminder,
+  DEFAULT_REMINDER,
+  loadReminder,
+  scheduleTestReminder,
+  type Reminder,
+} from './src/reminder';
 import { loadLocalGoals, saveLocalGoals } from './src/localGoals';
 import { GoalScreen } from './src/GoalScreen';
 import { WeightChart } from './src/WeightChart';
@@ -215,6 +221,21 @@ export default function App() {
     return null;
   }
 
+  // Sends one test notification about a minute from now.
+  async function testReminder() {
+    setReminderNote(null);
+    try {
+      const ok = await scheduleTestReminder();
+      setReminderNote(
+        ok
+          ? '1分後にテスト通知が届きます。画面を閉じても届きます。'
+          : '通知が許可されていないため、テスト通知を送れません。',
+      );
+    } catch {
+      setReminderNote('テスト通知を設定できませんでした。');
+    }
+  }
+
   // Turns the reminder on or off and sets its time. Shows a note when the phone refuses notifications.
   async function changeReminder(r: Reminder) {
     setReminder(r);
@@ -240,7 +261,7 @@ export default function App() {
       setSources(result.sources);
       setStepSource(result.chosen);
       setSteps(result.daily[result.daily.length - 1]?.steps ?? 0);
-      setSyncMessage(null);
+      setSyncMessage(result.activityDetail ? `距離・カロリー ${result.activityDetail}` : null);
       return;
     }
     const text =
@@ -344,6 +365,7 @@ export default function App() {
             reminder={reminder}
             reminderNote={reminderNote}
             onSetReminder={changeReminder}
+            onTestReminder={testReminder}
           />
         </ScrollView>
       ) : tab === 'graph' ? (

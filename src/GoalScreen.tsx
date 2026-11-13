@@ -13,6 +13,7 @@ type Props = {
   reminder: Reminder;
   reminderNote: string | null;
   onSetReminder: (r: Reminder) => void;
+  onTestReminder: () => void;
 };
 
 const REMINDER_HOURS = [20, 21, 22, 23];
@@ -36,6 +37,7 @@ export function GoalScreen({
   reminder,
   reminderNote,
   onSetReminder,
+  onTestReminder,
 }: Props) {
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +112,15 @@ export function GoalScreen({
               </Text>
             </Pressable>
           ))}
+        </View>
+        <View style={styles.reminderRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onTestReminder}
+            style={styles.reminderBtn}
+          >
+            <Text style={styles.reminderText}>1分後にテスト通知</Text>
+          </Pressable>
         </View>
         {reminderNote ? <Text style={styles.sub}>{reminderNote}</Text> : null}
       </View>

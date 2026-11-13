@@ -51,3 +51,20 @@ export async function applyReminder(r: Reminder): Promise<boolean> {
   await saveReminder(r);
   return true;
 }
+
+// Sends one test notification about a minute from now, so the setting can be checked.
+export async function scheduleTestReminder(): Promise<boolean> {
+  const perm = await Notifications.requestPermissionsAsync();
+  if (!perm.granted) return false;
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'ポケットヘルス',
+      body: 'テスト通知です。',
+    },
+    trigger: {
+      type: SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 60,
+    },
+  });
+  return true;
+}
