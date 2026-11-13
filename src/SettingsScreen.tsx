@@ -121,7 +121,7 @@ export function SettingsScreen(props: Props) {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Health Connect</Text>
         <Text style={styles.sub}>
-          歩数・距離・消費カロリー・睡眠を読み取ります。睡眠を手で入力したときだけ書き込みます。
+          歩数・距離・消費カロリー・睡眠・体重を読み取ります。体組成計のアプリが保存した体重は、自動で記録に取り込みます。睡眠を手で入力したときだけ書き込みます。
         </Text>
         <Pressable onPress={props.onResync} accessibilityRole="button" style={styles.cta}>
           <Text style={styles.ctaText}>Health Connectを許可して再取得</Text>

@@ -201,6 +201,7 @@ const ALL_PERMISSIONS = [
   { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
   { accessType: 'read', recordType: 'SleepSession' },
   { accessType: 'write', recordType: 'SleepSession' },
+  { accessType: 'read', recordType: 'Weight' },
 ] as const;
 
 // Asks for all permissions at once. Returns a reason when Health Connect cannot be used.
@@ -216,5 +217,40 @@ export async function requestHealthPermissions(): Promise<
     return { ok: true };
   } catch {
     return { ok: false, reason: 'error' };
+  }
+}
+
+// A weight saved to Health Connect by another app, such as a body-composition scale's app.
+export type HealthWeight = { id: string; kg: number; recordedAt: Date; origin: string };
+
+// Reads weights from the last `days` days. Returns an empty list when weight reading is
+// not allowed or Health Connect cannot be used, so the app keeps working without it.
+export async function readHealthWeights(days = 30): Promise<HealthWeight[]> {
+  if (Platform.OS !== 'android') return [];
+  try {
+    if ((await getSdkStatus()) !== SdkAvailabilityStatus.SDK_AVAILABLE) return [];
+    if (!(await initialize())) return [];
+    const granted = await getGrantedPermissions();
+    if (!granted.some((p) => p.accessType === 'read' && p.recordType === 'Weight')) return [];
+
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const list: HealthWeight[] = [];
+    let pageToken: string | undefined;
+    do {
+      const page = await readRecords('Weight', {
+        timeRangeFilter: { operator: 'between', startTime: from.toISOString(), endTime: new Date().toISOString() },
+        pageToken,
+      });
+      for (const r of page.records) {
+        const kg = Math.round(r.weight.inKilograms * 100) / 100;
+        const id = r.metadata?.id;
+        if (!id || kg < 20 || kg > 300) continue;
+        list.push({ id, kg, recordedAt: new Date(r.time), origin: r.metadata?.dataOrigin ?? 'unknown' });
+      }
+      pageToken = page.pageToken || undefined;
+    } while (pageToken);
+    return list;
+  } catch {
+    return [];
   }
 }

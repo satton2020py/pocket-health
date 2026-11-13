@@ -8,7 +8,7 @@ export function OnboardingScreen({ onAllow, onSkip }: { onAllow: () => void; onS
   const items: [string, string][] = [
     ['歩数・距離・消費カロリー', '今日の画面と7日間のグラフに表示します（読み取りのみ）。'],
     ['睡眠', '昨夜の睡眠と7日間の記録に表示します。睡眠を手で入力したときだけ、Health Connectに書き込みます。'],
-    ['体重', 'Health Connectは使いません。この端末に保存し、ログインした場合だけあなた専用のクラウドに保存します。'],
+    ['体重', '体組成計のアプリがHealth Connectに保存した体重を取り込みます（読み取りのみ）。記録はこの端末に保存し、ログインした場合だけあなた専用のクラウドに保存します。'],
   ];
   return (
     <ScrollView contentContainerStyle={styles.wrap}>

@@ -40,9 +40,11 @@ import {
 import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
 import { deleteWeight, loadWeights, saveWeight, updateWeight } from './src/weightStore';
 import { loadLocalWeights, saveLocalWeights } from './src/localWeights';
+import { newHealthWeights } from './src/healthWeights';
 import { loadGoals, saveGoals } from './src/goalStore';
 import { loadOnboarded, saveOnboarded } from './src/onboarding';
 import type { User } from '@react-native-firebase/auth';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { type Palette, usePalette, useStyles } from './src/theme';
 import { GoalIcon, RecordsIcon, SettingsIcon, TodayIcon } from './src/icons';
 
@@ -58,7 +60,19 @@ const TABS: { key: Tab; label: string; Icon: ComponentType<{ color: string }> }[
 const byNewest = (list: WeightEntry[]) =>
   [...list].sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime());
 
-export default function App() {
+// The safe-area provider must sit above the screen that reads the insets.
+export default function Root() {
+  return (
+    <SafeAreaProvider>
+      <App />
+    </SafeAreaProvider>
+  );
+}
+
+function App() {
+  // Room for the status bar and notch on top and the phone's navigation bar below,
+  // measured on each phone instead of fixed numbers.
+  const insets = useSafeAreaInsets();
   const styles = useStyles(makeStyles);
   const palette = usePalette();
   const [tab, setTab] = useState<Tab>('today');
@@ -342,6 +356,28 @@ export default function App() {
     }
   }
 
+  // Brings in weights that a scale's app saved to Health Connect, each once.
+  async function importHealthWeights() {
+    try {
+      const { list, markDone } = await newHealthWeights(entries);
+      if (list.length === 0) return;
+      if (user) {
+        for (const w of list) await saveWeight(user.uid, w.kg, w.recordedAt);
+        setEntries(await loadWeights(user.uid));
+      } else {
+        const next = byNewest([
+          ...list.map((w) => ({ id: `hc-${w.id}`, kg: w.kg, recordedAt: w.recordedAt })),
+          ...entries,
+        ]);
+        await saveLocalWeights(next);
+        setEntries(next);
+      }
+      await markDone(list.map((w) => w.id));
+    } catch {
+      // Tried again on the next read.
+    }
+  }
+
   async function readHealthConnect(preferred: string | null) {
     setSyncMessage('Health Connectから取得しています…');
     const result = await readRecentSteps(7, preferred);
@@ -371,6 +407,7 @@ export default function App() {
       setSyncMessage(result.detail ? `${text}（${result.detail}）` : text);
     }
     await syncSleep();
+    await importHealthWeights();
   }
 
   // Asks for every Health Connect permission in one screen, then reads the data.
@@ -435,7 +472,7 @@ export default function App() {
     return (
       <View style={styles.container}>
         <StatusBar style="auto" />
-        <View style={styles.body}>
+        <View style={[styles.body, { paddingTop: insets.top + 16 }]}>
           <OnboardingScreen onAllow={() => finishOnboarding(true)} onSkip={() => finishOnboarding(false)} />
         </View>
       </View>
@@ -451,7 +488,7 @@ export default function App() {
       <ScrollView
         ref={scrollRef}
         style={styles.flex}
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16 }]}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -528,7 +565,7 @@ export default function App() {
         )}
       </ScrollView>
 
-      <View style={styles.tabBar} accessibilityRole="tablist">
+      <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }]} accessibilityRole="tablist">
         {TABS.map(({ key, label, Icon }) => {
           const on = tab === key;
           const color = on ? palette.accent : palette.tabInactive;
@@ -558,17 +595,15 @@ const makeStyles = (p: Palette) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: p.bg },
     flex: { flex: 1 },
-    body: { flex: 1, paddingTop: 56, paddingHorizontal: 20 },
+    body: { flex: 1, paddingHorizontal: 20 },
     // Padding sits on the content, not the scroll view, so the last card can scroll fully into view.
-    scroll: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 48 },
+    scroll: { paddingHorizontal: 20, paddingBottom: 48 },
     tabBar: {
       flexDirection: 'row',
       backgroundColor: p.surface,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: p.line,
       paddingTop: 8,
-      // Room for the phone's own navigation bar under the app.
-      paddingBottom: 28,
     },
     tab: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 },
     tabText: { fontSize: 13, fontWeight: '800' },
