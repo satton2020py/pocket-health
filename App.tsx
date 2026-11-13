@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
-import { readLastNightSleep } from './src/sleep';
+import { nightFrom, parseClock, readLastNightSleep, writeSleep } from './src/sleep';
 import { applyReminder, DEFAULT_REMINDER, loadReminder, type Reminder } from './src/reminder';
 import { GoalScreen } from './src/GoalScreen';
 import { WeightChart } from './src/WeightChart';
@@ -197,6 +197,19 @@ export default function App() {
     );
   }
 
+  // Saves a sleep time typed by the user to Health Connect, then shows it on the card.
+  // Returns an error message to show in the form, or null when saved.
+  async function saveManualSleep(bedText: string, wakeText: string): Promise<string | null> {
+    const bed = parseClock(bedText);
+    const wake = parseClock(wakeText);
+    if (!bed || !wake) return '時刻は 23:30 のように入力してください。';
+    const { start, end } = nightFrom(bed, wake);
+    const error = await writeSleep(start, end);
+    if (error) return error;
+    await syncSleep();
+    return null;
+  }
+
   // Turns the reminder on or off and sets its time. Shows a note when the phone refuses notifications.
   async function changeReminder(r: Reminder) {
     setReminder(r);
@@ -296,6 +309,7 @@ export default function App() {
             onSelectSource={selectSource}
             sleep={sleep}
             sleepMessage={sleepMessage}
+            onSaveSleep={saveManualSleep}
           />
           <Pressable
             style={styles.smallBtn}

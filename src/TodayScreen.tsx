@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { palette } from './theme';
 import type { DailySteps, StepSource } from './healthConnect';
@@ -15,7 +16,58 @@ type Props = {
   onSelectSource: (origin: string) => void;
   sleep: { hours: number; start: Date; end: Date } | null;
   sleepMessage: string | null;
+  onSaveSleep: (bed: string, wake: string) => Promise<string | null>;
 };
+
+// Lets the user type last night's bedtime and wake-up time, which are saved to Health Connect.
+function SleepForm({ onSave }: { onSave: Props['onSaveSleep'] }) {
+  const [bed, setBed] = useState('');
+  const [wake, setWake] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    const result = await onSave(bed, wake);
+    setBusy(false);
+    setError(result);
+    if (!result) {
+      setBed('');
+      setWake('');
+    }
+  }
+
+  return (
+    <View style={styles.form}>
+      <Text style={styles.sub}>睡眠を手動で入力</Text>
+      <View style={styles.formRow}>
+        <TextInput
+          style={styles.input}
+          placeholder="就寝 23:30"
+          placeholderTextColor={palette.placeholder}
+          value={bed}
+          onChangeText={setBed}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="起床 07:00"
+          placeholderTextColor={palette.placeholder}
+          value={wake}
+          onChangeText={setWake}
+        />
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        onPress={save}
+        disabled={busy}
+        style={styles.saveBtn}
+      >
+        <Text style={styles.saveText}>{busy ? '保存中…' : '保存する'}</Text>
+      </Pressable>
+      {error ? <Text style={styles.sub}>{error}</Text> : null}
+    </View>
+  );
+}
 
 const clock = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 
@@ -45,6 +97,7 @@ export function TodayScreen({
   onSelectSource,
   sleep,
   sleepMessage,
+  onSaveSleep,
 }: Props) {
   // The ring stops at a full circle, but the percentage keeps counting past 100%.
   const ratio = Math.min(steps / stepGoal, 1);
@@ -114,6 +167,7 @@ export function TodayScreen({
         ) : (
           <Text style={styles.sub}>{sleepMessage ?? '読み込み中…'}</Text>
         )}
+        <SleepForm onSave={onSaveSleep} />
       </View>
       {chosen ? (
         <Text style={styles.sub}>歩数のデータ元: {sourceLabel(chosen)}</Text>
@@ -255,6 +309,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: palette.muted,
     marginTop: 4,
+  },
+  form: {
+    gap: 8,
+    paddingHorizontal: 4,
+    paddingTop: 8,
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: palette.bg,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    fontSize: 14,
+    color: palette.fg,
+  },
+  saveBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: palette.accent,
+  },
+  saveText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   sleepValue: {
     fontSize: 28,
