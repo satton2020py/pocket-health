@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type ScrollViewInstance,
 } from 'react-native';
 import type { WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen, type StepsStatus } from './src/TodayScreen';
@@ -71,6 +72,8 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   // True while Health Connect is being read, so a pull and a return to the app do not read twice at once.
   const syncing = useRef(false);
+  // The tabs share one scroll view, so it goes back to the top when the tab changes.
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const [sleep, setSleep] = useState<{ hours: number; start: Date; end: Date } | null>(null);
   const [nights, setNights] = useState<SleepNight[]>([]);
   const [sleepMessage, setSleepMessage] = useState<string | null>(null);
@@ -400,6 +403,7 @@ export default function App() {
     >
       <StatusBar style="auto" />
       <ScrollView
+        ref={scrollRef}
         style={styles.flex}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
@@ -476,7 +480,10 @@ export default function App() {
           return (
             <Pressable
               key={key}
-              onPress={() => setTab(key)}
+              onPress={() => {
+                setTab(key);
+                scrollRef.current?.scrollTo({ y: 0, animated: false });
+              }}
               accessibilityRole="tab"
               accessibilityState={{ selected: on }}
               accessibilityLabel={label}

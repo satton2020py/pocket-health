@@ -104,8 +104,19 @@ function WeightRecords(props: Props) {
         {sorted.map((e, i) => {
           const prev = sorted[i + 1];
           const diff = prev ? e.kg - prev.kg : null;
+          // A month heading above the first (newest) record of each month.
+          const newer = sorted[i - 1];
+          const monthStarts =
+            !newer ||
+            newer.recordedAt.getMonth() !== e.recordedAt.getMonth() ||
+            newer.recordedAt.getFullYear() !== e.recordedAt.getFullYear();
           return (
             <View key={e.id}>
+              {monthStarts ? (
+                <Text style={styles.month}>
+                  {e.recordedAt.getFullYear()}年{e.recordedAt.getMonth() + 1}月
+                </Text>
+              ) : null}
               <Pressable
                 onPress={() => setEditing(editing === e.id ? null : e.id)}
                 accessibilityRole="button"
@@ -117,7 +128,7 @@ function WeightRecords(props: Props) {
                 </Text>
                 <View style={styles.rowRight}>
                   {diff !== null ? (
-                    <Text style={styles.diff}>
+                    <Text style={[styles.diff, diff < 0 && styles.diffDown]}>
                       {diff > 0 ? '+' : ''}
                       {formatWeight(diff)}
                     </Text>
@@ -314,6 +325,8 @@ const makeStyles = (p: Palette) =>
     rowRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     rowValue: { color: p.fg, fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
     diff: { color: p.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
+    diffDown: { color: p.accent, fontWeight: '700' },
+    month: { color: p.fg, fontSize: 14, fontWeight: '800', marginTop: 12 },
     editor: { gap: 8, paddingVertical: 10 },
     btnRow: { flexDirection: 'row', gap: 8 },
     smallCta: { flex: 1, backgroundColor: p.accent, borderRadius: 999, paddingVertical: 12, alignItems: 'center' },

@@ -15,7 +15,8 @@ const light = {
   line: '#E7E2D6',
   grid: '#EEEAE0',
   error: '#B5523B',
-  goal: '#D32F2F',
+  // Goal line: a calm dark gray, so it does not read as a warning.
+  goal: '#4F554D',
 };
 
 const dark: Palette = {
@@ -31,7 +32,7 @@ const dark: Palette = {
   line: '#353932',
   grid: '#30332E',
   error: '#E58A72',
-  goal: '#EF6B6B',
+  goal: '#C4C9BF',
 };
 
 export type Palette = typeof light;

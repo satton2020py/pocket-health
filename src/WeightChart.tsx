@@ -26,13 +26,15 @@ const BOTTOM = 34;
 
 // Picks a tick spacing that gives a readable number of y-axis labels.
 function tickStep(span: number): number {
-  if (span <= 1.5) return 0.25;
-  if (span <= 6) return 0.5;
-  return 1;
+  if (span <= 3) return 0.5;
+  if (span <= 8) return 1;
+  return 2;
 }
 
 const shortDate = (d: Date) =>
   `${d.getMonth() + 1}/${d.getDate()}`;
+
+const timeOf = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 // Shows the weight history over a chosen period, with gridlines and the goal as a red dashed line.
 export function WeightChart({ entries, goalKg }: Props) {
@@ -40,6 +42,8 @@ export function WeightChart({ entries, goalKg }: Props) {
   const p = usePalette();
   const styles = useStyles(makeStyles);
   const [rangeIndex, setRangeIndex] = useState(1);
+  // The record the user tapped on the chart, shown with its date and value.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const range = RANGES[rangeIndex];
 
   const now = new Date();
@@ -104,10 +108,15 @@ export function WeightChart({ entries, goalKg }: Props) {
   const points = visible.map((e) => `${x(e.recordedAt)},${y(e.kg)}`).join(' ');
   // The 7-day average over all records, cut to this period. It is the main line; the daily
   // weigh-ins are drawn lighter behind it.
-  const avgPoints = movingAverage(entries)
+  const averages = movingAverage(entries);
+  const avgPoints = averages
     .filter((a) => a.recordedAt >= start && a.recordedAt <= now)
     .map((a) => `${x(a.recordedAt)},${y(a.kg)}`)
     .join(' ');
+  const selected = visible.find((e) => e.id === selectedId) ?? null;
+  const selectedAvg = selected
+    ? averages.find((a) => a.recordedAt.getTime() === selected.recordedAt.getTime())
+    : undefined;
 
   // Four evenly spaced date labels across the period.
   const dateMarks = [0, 1 / 3, 2 / 3, 1].map((f) => ({
@@ -158,7 +167,7 @@ export function WeightChart({ entries, goalKg }: Props) {
               fill={p.muted}
               textAnchor="end"
             >
-              {t.toFixed(2)}
+              {t.toFixed(1)}
             </SvgText>
           ))}
           {dateMarks.map((m) => (
@@ -197,10 +206,10 @@ export function WeightChart({ entries, goalKg }: Props) {
                 y={y(goalKg) + 4}
                 fontSize={12}
                 fontWeight="700"
-                fill={p.onAccent}
+                fill={p.bg}
                 textAnchor="middle"
               >
-                {goalKg.toFixed(2)}
+                {goalKg.toFixed(1)}
               </SvgText>
             </>
           ) : null}
@@ -230,6 +239,38 @@ export function WeightChart({ entries, goalKg }: Props) {
             strokeLinejoin="round"
             strokeLinecap="round"
           />
+          {selected ? (
+            <>
+              <Line
+                x1={x(selected.recordedAt)}
+                x2={x(selected.recordedAt)}
+                y1={TOP}
+                y2={HEIGHT - BOTTOM}
+                stroke={p.muted}
+                strokeWidth={1}
+                strokeDasharray="2 3"
+              />
+              <Circle
+                cx={x(selected.recordedAt)}
+                cy={y(selected.kg)}
+                r={6}
+                fill={p.surface}
+                stroke={p.accent}
+                strokeWidth={3}
+              />
+            </>
+          ) : null}
+          {/* Larger invisible circles, so a point is easy to tap with a finger. */}
+          {visible.map((e) => (
+            <Circle
+              key={`hit${e.id}`}
+              cx={x(e.recordedAt)}
+              cy={y(e.kg)}
+              r={14}
+              fill="transparent"
+              onPress={() => setSelectedId(selectedId === e.id ? null : e.id)}
+            />
+          ))}
         </Svg>
       </View>
 
@@ -238,9 +279,17 @@ export function WeightChart({ entries, goalKg }: Props) {
           この期間の変化 {change > 0 ? '+' : ''}
           {formatWeight(change)} kg（{formatWeight(first.kg)} → {formatWeight(last.kg)} kg）
         </Text>
+        {selected ? (
+          <Text style={styles.selected}>
+            {shortDate(selected.recordedAt)} {timeOf(selected.recordedAt)}　{formatWeight(selected.kg)} kg
+            {selectedAvg ? `（7日平均 ${formatWeight(selectedAvg.kg)} kg）` : ''}
+          </Text>
+        ) : (
+          <Text style={styles.sub}>点をタップすると、その日の体重が出ます。</Text>
+        )}
         <Text style={styles.sub}>
           太い線は7日間の平均、薄い点は毎回の記録です。
-          {goalKg !== null ? `赤い点線は目標体重 ${formatWeight(goalKg)} kg です。` : ''}
+          {goalKg !== null ? `灰色の点線は目標体重 ${formatWeight(goalKg)} kg です。` : ''}
         </Text>
       </View>
 
@@ -279,6 +328,13 @@ const makeStyles = (p: Palette) =>
     color: p.muted,
     fontSize: 13,
     padding: 4,
+  },
+  selected: {
+    color: p.fg,
+    fontSize: 15,
+    fontWeight: '800',
+    padding: 4,
+    fontVariant: ['tabular-nums'],
   },
   cardTitle: {
     fontSize: 16,

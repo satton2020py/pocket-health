@@ -119,10 +119,19 @@ export function SettingsScreen(props: Props) {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>歩数のデータ元</Text>
+        <Text style={styles.cardTitle}>Health Connect</Text>
+        <Text style={styles.sub}>
+          歩数・距離・消費カロリー・睡眠を読み取ります。睡眠を手で入力したときだけ書き込みます。
+        </Text>
+        <Pressable onPress={props.onResync} accessibilityRole="button" style={styles.cta}>
+          <Text style={styles.ctaText}>Health Connectを許可して再取得</Text>
+        </Pressable>
+        {props.syncMessage ? <Text style={styles.sub}>{props.syncMessage}</Text> : null}
+
+        <Text style={styles.subTitle}>歩数のデータ元</Text>
         {props.sources.length === 0 ? (
           <Text style={styles.sub}>
-            Health Connectから、まだ歩数を読み取れていません。下の「Health Connectを許可して再取得」を押してください。
+            Health Connectから、まだ歩数を読み取れていません。上のボタンを押してください。
           </Text>
         ) : (
           <>
@@ -150,17 +159,6 @@ export function SettingsScreen(props: Props) {
           </>
         )}
       </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Health Connect</Text>
-        <Text style={styles.sub}>
-          歩数・距離・消費カロリー・睡眠を読み取ります。睡眠を手で入力したときだけ書き込みます。
-        </Text>
-        <Pressable onPress={props.onResync} accessibilityRole="button" style={styles.cta}>
-          <Text style={styles.ctaText}>Health Connectを許可して再取得</Text>
-        </Pressable>
-        {props.syncMessage ? <Text style={styles.sub}>{props.syncMessage}</Text> : null}
-      </View>
     </View>
   );
 }
@@ -171,6 +169,7 @@ const makeStyles = (p: Palette) =>
     title: { fontSize: 22, fontWeight: '800', color: p.fg },
     card: { backgroundColor: p.surface, borderRadius: 16, padding: 16, gap: 10 },
     cardTitle: { fontSize: 16, fontWeight: '800', color: p.fg },
+    subTitle: { fontSize: 14, fontWeight: '800', color: p.fg, marginTop: 6 },
     sub: { fontSize: 13, color: p.muted },
     error: { color: p.error, fontSize: 13 },
     link: { color: p.accent, fontSize: 14, fontWeight: '700' },

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { type Palette, usePalette, useStyles } from './theme';
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
 import { forecastGoal, weightTrend } from './trend';
+import { WeightInput } from './WeightInput';
 
 type Props = {
   goalKg: number | null;
@@ -13,6 +14,9 @@ type Props = {
   // A save failure, shown on this screen.
   error: string | null;
 };
+
+// Common daily step goals, so changing the goal is one tap.
+const STEP_PRESETS = [6000, 8000, 10000];
 
 // Parses a whole-number step goal. Returns null when it is not a sensible value.
 function parseStepGoal(raw: string): number | null {
@@ -34,7 +38,11 @@ export function GoalScreen({
 }: Props) {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
-  const [input, setInput] = useState('');
+  const trend = weightTrend(entries);
+  // Starts from the current goal, or the 7-day average minus 3 kg (the project's first goal).
+  const [input, setInput] = useState(
+    goalKg !== null ? formatWeight(goalKg) : trend ? formatWeight(Math.round((trend.averageKg - 3) * 10) / 10) : '',
+  );
   const [inputError, setError] = useState<string | null>(null);
   const [stepInput, setStepInput] = useState('');
   const [stepError, setStepError] = useState<string | null>(null);
@@ -46,7 +54,6 @@ export function GoalScreen({
       return;
     }
     setError(null);
-    setInput('');
     onSetGoal(kg);
   }
 
@@ -62,9 +69,18 @@ export function GoalScreen({
   }
 
   // Measured from the 7-day average, the same as the Today screen.
-  const trend = weightTrend(entries);
   const remaining = goalKg !== null && trend !== null ? trend.averageKg - goalKg : null;
   const forecast = goalKg !== null ? forecastGoal(entries, goalKg) : null;
+
+  // How far along the way from the first record to the goal the 7-day average is.
+  const first =
+    entries.length > 0
+      ? entries.reduce((a, b) => (a.recordedAt < b.recordedAt ? a : b))
+      : null;
+  const progress =
+    goalKg !== null && first !== null && trend !== null && first.kg > goalKg
+      ? Math.min(1, Math.max(0, (first.kg - trend.averageKg) / (first.kg - goalKg)))
+      : null;
 
   return (
     <View style={styles.wrap}>
@@ -90,20 +106,27 @@ export function GoalScreen({
           <Text style={styles.sub}>{forecast.message}</Text>
         ) : null}
 
-        <View style={styles.form}>
-          <TextInput
-            style={styles.input}
-            value={input}
-            onChangeText={(text) => {
+        {progress !== null && first !== null ? (
+          <View style={styles.progressBox}>
+            <View style={styles.track}>
+              <View style={[styles.fill, { width: `${Math.round(progress * 100)}%` }]} />
+            </View>
+            <Text style={styles.sub}>
+              最初の記録 {formatWeight(first.kg)} kg から {Math.round(progress * 100)}% 進みました
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.formTop}>
+          <WeightInput
+            text={input}
+            onChange={(text) => {
               setInput(text);
               setError(null);
             }}
-            keyboardType="decimal-pad"
-            placeholder="例: 60.00"
-            placeholderTextColor={palette.placeholder}
-            accessibilityLabel="目標体重（kg）"
+            fallbackKg={goalKg ?? trend?.averageKg ?? 60}
+            label="目標体重（kg）"
           />
-          <Text style={styles.unit}>kg</Text>
         </View>
         {inputError ? <Text style={styles.error}>{inputError}</Text> : null}
 
@@ -125,6 +148,24 @@ export function GoalScreen({
         <Text style={styles.label}>1日の歩数目標</Text>
         <Text style={styles.value}>{stepGoal.toLocaleString('ja-JP')} 歩</Text>
 
+        <View style={styles.chipRow}>
+          {STEP_PRESETS.map((n) => {
+            const on = stepGoal === n;
+            return (
+              <Pressable
+                key={n}
+                onPress={() => onSetStepGoal(n)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                style={[styles.chip, on && styles.chipOn]}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{n.toLocaleString('ja-JP')}歩</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.sub}>ほかの歩数にするときは入力してください。</Text>
         <View style={styles.form}>
           <TextInput
             style={styles.input}
@@ -206,6 +247,50 @@ const makeStyles = (p: Palette) =>
     fontWeight: '800',
     color: p.fg,
     fontVariant: ['tabular-nums'],
+  },
+  formTop: {
+    marginTop: 8,
+  },
+  progressBox: {
+    gap: 6,
+    marginTop: 4,
+  },
+  track: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: p.line,
+    overflow: 'hidden',
+  },
+  fill: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: p.accent,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  chip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: p.bg,
+    borderWidth: 1,
+    borderColor: p.line,
+  },
+  chipOn: {
+    backgroundColor: p.accent,
+    borderColor: p.accent,
+  },
+  chipText: {
+    color: p.muted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  chipTextOn: {
+    color: p.onAccent,
   },
   unit: {
     fontSize: 18,
