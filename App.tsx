@@ -16,6 +16,7 @@ import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
 import { nightFrom, parseClock, readLastNightSleep, writeSleep } from './src/sleep';
 import { applyReminder, DEFAULT_REMINDER, loadReminder, type Reminder } from './src/reminder';
+import { loadLocalGoals, saveLocalGoals } from './src/localGoals';
 import { GoalScreen } from './src/GoalScreen';
 import { WeightChart } from './src/WeightChart';
 import { readRecentSteps, type DailySteps, type StepSource } from './src/healthConnect';
@@ -95,6 +96,8 @@ export default function App() {
       saveGoals(user.uid, { goalKg: kg, stepGoal }).catch(() =>
         setError('目標を保存できませんでした。'),
       );
+    } else {
+      saveLocalGoals({ goalKg: kg, stepGoal });
     }
   }
 
@@ -104,6 +107,8 @@ export default function App() {
       saveGoals(user.uid, { goalKg, stepGoal: steps }).catch(() =>
         setError('目標を保存できませんでした。'),
       );
+    } else {
+      saveLocalGoals({ goalKg, stepGoal: steps });
     }
   }
 
@@ -250,6 +255,11 @@ export default function App() {
   useEffect(() => {
     syncFromHealthConnect();
     loadReminder().then(setReminder);
+    loadLocalGoals().then((local) => {
+      if (!local) return;
+      setGoalKg(local.goalKg);
+      setStepGoal(local.stepGoal);
+    });
   }, []);
 
   return (
