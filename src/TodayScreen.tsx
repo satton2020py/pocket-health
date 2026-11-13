@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { palette } from './theme';
-import type { DailySteps, StepSource } from './healthConnect';
+import type { DailySteps } from './healthConnect';
 
 export const DEFAULT_STEP_GOAL = 8000;
 
@@ -11,9 +11,6 @@ type Props = {
   stepGoal: number;
   daily: DailySteps[];
   activity: { distanceKm: number; kcal: number };
-  sources: StepSource[];
-  chosen: string | null;
-  onSelectSource: (origin: string) => void;
   sleep: { hours: number; start: Date; end: Date } | null;
   sleepMessage: string | null;
   onSaveSleep: (bed: string, wake: string) => Promise<string | null>;
@@ -72,7 +69,7 @@ function SleepForm({ onSave }: { onSave: Props['onSaveSleep'] }) {
 const clock = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 // Friendly name for an app's package name. Unknown apps show their last package part.
-function sourceLabel(origin: string): string {
+export function sourceLabel(origin: string): string {
   if (origin.includes('shealth')) return 'Samsung Health';
   if (origin.includes('fitness')) return 'Google Fit';
   if (origin === 'unknown') return '不明';
@@ -92,9 +89,6 @@ export function TodayScreen({
   stepGoal,
   daily,
   activity,
-  sources,
-  chosen,
-  onSelectSource,
   sleep,
   sleepMessage,
   onSaveSleep,
@@ -169,40 +163,9 @@ export function TodayScreen({
         )}
         <SleepForm onSave={onSaveSleep} />
       </View>
-      {chosen ? (
-        <Text style={styles.sub}>歩数のデータ元: {sourceLabel(chosen)}</Text>
-      ) : null}
-
       <Text style={styles.activity}>
         {activity.distanceKm.toFixed(2)} km ｜ {Math.round(activity.kcal).toLocaleString('ja-JP')} kcal
       </Text>
-
-      {sources.length > 0 ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>歩数のデータ元</Text>
-          <Text style={styles.sub}>
-            同じ歩数が重ならないよう、1つのアプリの数字だけを使っています。
-          </Text>
-          <View style={styles.sourceRow}>
-            {sources.map((s) => {
-              const on = s.origin === chosen;
-              return (
-                <Pressable
-                  key={s.origin}
-                  onPress={() => onSelectSource(s.origin)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  style={[styles.sourcePill, on && styles.sourcePillOn]}
-                >
-                  <Text style={[styles.sourceText, on && styles.sourceTextOn]}>
-                    {sourceLabel(s.origin)} {s.total.toLocaleString('ja-JP')}歩
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
 
       {daily.length > 0 ? (
         <View style={styles.card}>

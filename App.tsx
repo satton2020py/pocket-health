@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { formatWeight, parseWeightInput, type WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
+import { SettingsScreen } from './src/SettingsScreen';
 import { nightFrom, parseClock, readLastNightSleep, writeSleep } from './src/sleep';
 import {
   applyReminder,
@@ -33,7 +34,7 @@ import { loadGoals, saveGoals } from './src/goalStore';
 import type { User } from '@react-native-firebase/auth';
 import { palette } from './src/theme';
 
-type Tab = 'today' | 'weight' | 'goal' | 'graph';
+type Tab = 'today' | 'weight' | 'goal' | 'graph' | 'settings';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
@@ -326,6 +327,15 @@ export default function App() {
             グラフ
           </Text>
         </Pressable>
+        <Pressable
+          onPress={() => setTab('settings')}
+          accessibilityRole="tab"
+          style={[styles.tab, tab === 'settings' && styles.tabOn]}
+        >
+          <Text style={[styles.tabText, tab === 'settings' && styles.tabTextOn]}>
+            設定
+          </Text>
+        </Pressable>
       </View>
 
       {tab === 'today' ? (
@@ -335,9 +345,6 @@ export default function App() {
             stepGoal={stepGoal}
             daily={daily}
             activity={activity}
-            sources={sources}
-            chosen={stepSource}
-            onSelectSource={selectSource}
             sleep={sleep}
             sleepMessage={sleepMessage}
             onSaveSleep={saveManualSleep}
@@ -366,6 +373,14 @@ export default function App() {
             reminderNote={reminderNote}
             onSetReminder={changeReminder}
             onTestReminder={testReminder}
+          />
+        </ScrollView>
+      ) : tab === 'settings' ? (
+        <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 32 }}>
+          <SettingsScreen
+            sources={sources}
+            chosen={stepSource}
+            onSelectSource={selectSource}
           />
         </ScrollView>
       ) : tab === 'graph' ? (
