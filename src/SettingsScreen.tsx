@@ -19,6 +19,9 @@ type Props = {
   onSelectSource: (origin: string) => void;
   syncMessage: string | null;
   onResync: () => void;
+  onExportCsv: () => void;
+  onImportCsv: () => void;
+  dataNote: string | null;
   // A failure from this screen (login, saving the step app), shown here.
   error: string | null;
 };
@@ -158,6 +161,23 @@ export function SettingsScreen(props: Props) {
             </View>
           </>
         )}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>体重の記録の書き出し・読み込み</Text>
+        <Text style={styles.sub}>
+          CSVファイル（表計算で開けます）で書き出して、Googleドライブやメールに保存できます。
+          ほかのアプリから書き出したCSVも、日付と体重の列があれば読み込めます。
+        </Text>
+        <View style={styles.btnRow}>
+          <Pressable onPress={props.onExportCsv} accessibilityRole="button" style={[styles.cta, styles.flex]}>
+            <Text style={styles.ctaText}>書き出す</Text>
+          </Pressable>
+          <Pressable onPress={props.onImportCsv} accessibilityRole="button" style={styles.ghostBtn}>
+            <Text style={styles.ghostText}>読み込む</Text>
+          </Pressable>
+        </View>
+        {props.dataNote ? <Text style={styles.sub}>{props.dataNote}</Text> : null}
       </View>
     </View>
   );

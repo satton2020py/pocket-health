@@ -41,6 +41,7 @@ import { onUserChanged, signInWithGoogle, signOut } from './src/auth';
 import { deleteWeight, loadWeights, saveWeight, updateWeight } from './src/weightStore';
 import { loadLocalWeights, saveLocalWeights } from './src/localWeights';
 import { newHealthWeights } from './src/healthWeights';
+import { pickWeightsCsv, shareWeightsCsv } from './src/csv';
 import { loadGoals, saveGoals } from './src/goalStore';
 import { loadOnboarded, saveOnboarded } from './src/onboarding';
 import type { User } from '@react-native-firebase/auth';
@@ -103,6 +104,8 @@ function App() {
   const [weightError, setWeightError] = useState<string | null>(null);
   const [goalError, setGoalError] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  // Result of a CSV export or import, shown on the settings tab.
+  const [dataNote, setDataNote] = useState<string | null>(null);
   const [goalKg, setGoalKg] = useState<number | null>(null);
   const [stepGoal, setStepGoal] = useState(DEFAULT_STEP_GOAL);
   const [sleepGoal, setSleepGoal] = useState(DEFAULT_SLEEP_GOAL);
@@ -356,25 +359,67 @@ function App() {
     }
   }
 
+  // Adds several weights at once, to the cloud when signed in, otherwise to the phone.
+  async function addWeights(list: { kg: number; recordedAt: Date }[], idPrefix: string) {
+    if (user) {
+      for (const w of list) await saveWeight(user.uid, w.kg, w.recordedAt);
+      setEntries(await loadWeights(user.uid));
+    } else {
+      const base = Date.now();
+      const next = byNewest([
+        ...list.map((w, i) => ({ id: `${idPrefix}-${base}-${i}`, kg: w.kg, recordedAt: w.recordedAt })),
+        ...entries,
+      ]);
+      await saveLocalWeights(next);
+      setEntries(next);
+    }
+  }
+
   // Brings in weights that a scale's app saved to Health Connect, each once.
   async function importHealthWeights() {
     try {
       const { list, markDone } = await newHealthWeights(entries);
       if (list.length === 0) return;
-      if (user) {
-        for (const w of list) await saveWeight(user.uid, w.kg, w.recordedAt);
-        setEntries(await loadWeights(user.uid));
-      } else {
-        const next = byNewest([
-          ...list.map((w) => ({ id: `hc-${w.id}`, kg: w.kg, recordedAt: w.recordedAt })),
-          ...entries,
-        ]);
-        await saveLocalWeights(next);
-        setEntries(next);
-      }
+      await addWeights(list, 'hc');
       await markDone(list.map((w) => w.id));
     } catch {
       // Tried again on the next read.
+    }
+  }
+
+  // Writes all weights to a CSV file and opens the phone's share screen.
+  async function exportCsv() {
+    setDataNote(null);
+    if (entries.length === 0) {
+      setDataNote('書き出す記録がまだありません。');
+      return;
+    }
+    try {
+      await shareWeightsCsv(entries);
+    } catch {
+      setDataNote('CSVを書き出せませんでした。');
+    }
+  }
+
+  // Reads weights from a CSV file. Records with the same time (to the minute) and value
+  // as one already saved are skipped, so reading the same file twice adds nothing.
+  async function importCsv() {
+    setDataNote(null);
+    try {
+      const picked = await pickWeightsCsv();
+      if (!picked) return;
+      const key = (kg: number, d: Date) => `${Math.floor(d.getTime() / 60000)}:${kg.toFixed(2)}`;
+      const have = new Set(entries.map((e) => key(e.kg, e.recordedAt)));
+      const fresh = picked.list.filter((w) => !have.has(key(w.kg, w.recordedAt)));
+      if (fresh.length > 0) await addWeights(fresh, 'csv');
+      const dup = picked.list.length - fresh.length;
+      setDataNote(
+        `${fresh.length}件を取り込みました。` +
+          (dup > 0 ? `${dup}件はすでにある記録なので飛ばしました。` : '') +
+          (picked.skipped > 0 ? `${picked.skipped}行は日付か体重が読めませんでした。` : ''),
+      );
+    } catch {
+      setDataNote('CSVを読み込めませんでした。');
     }
   }
 
@@ -560,6 +605,9 @@ function App() {
             onSelectSource={selectSource}
             syncMessage={syncMessage}
             onResync={allowAndSync}
+            onExportCsv={exportCsv}
+            onImportCsv={importCsv}
+            dataNote={dataNote}
             error={settingsError}
           />
         )}
