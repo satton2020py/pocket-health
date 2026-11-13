@@ -7,6 +7,8 @@ import { WeightChart } from './WeightChart';
 import { WeightInput } from './WeightInput';
 import { DateTimePicker, dayLabel } from './pickers';
 import type { SleepNight } from './sleep';
+import type { DailySteps } from './healthConnect';
+import { StepsChart } from './StepsChart';
 
 // The sleep the app aims for, from the project's first goals (7 hours).
 const SLEEP_TARGET_HOURS = 7;
@@ -19,6 +21,8 @@ type Props = {
   weightError: string | null;
   nights: SleepNight[];
   sleepMessage: string | null;
+  daily: DailySteps[];
+  stepGoal: number;
 };
 
 const timeOf = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -244,10 +248,10 @@ function SleepRecords({ nights, sleepMessage }: Pick<Props, 'nights' | 'sleepMes
   );
 }
 
-// History and charts for weight and sleep, switched with two buttons at the top.
+// History and charts for weight, sleep and steps, switched with buttons at the top.
 export function RecordsScreen(props: Props) {
   const styles = useStyles(makeStyles);
-  const [kind, setKind] = useState<'weight' | 'sleep'>('weight');
+  const [kind, setKind] = useState<'weight' | 'sleep' | 'steps'>('weight');
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>記録</Text>
@@ -256,6 +260,7 @@ export function RecordsScreen(props: Props) {
           [
             ['weight', '体重'],
             ['sleep', '睡眠'],
+            ['steps', '歩数'],
           ] as const
         ).map(([k, label]) => (
           <Pressable
@@ -271,8 +276,14 @@ export function RecordsScreen(props: Props) {
       </View>
       {kind === 'weight' ? (
         <WeightRecords {...props} />
-      ) : (
+      ) : kind === 'sleep' ? (
         <SleepRecords nights={props.nights} sleepMessage={props.sleepMessage} />
+      ) : (
+        <StepsChart
+          daily={props.daily}
+          stepGoal={props.stepGoal}
+          emptyMessage="歩数を読み込めていません。今日タブからHealth Connectを許可してください。"
+        />
       )}
     </View>
   );

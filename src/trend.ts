@@ -91,3 +91,45 @@ export function forecastGoal(
     message: `このペースなら、約${Math.round(daysLeft)}日後（${reachDate.toLocaleDateString('ja-JP')}頃）に目標に届く見込みです。`,
   };
 }
+
+const AVG_DAYS = 7;
+
+// For each record, the average of the records in the 7 days up to and including it.
+// Drawn as the smooth line on the weight chart, so a single heavy or light day does not
+// change the picture much. Uses all records, so the first days of a period still have
+// the days before them.
+export function movingAverage<T extends TrendPoint>(points: T[], days = AVG_DAYS): { kg: number; recordedAt: Date }[] {
+  const sorted = [...points].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+  return sorted.map((p, i) => {
+    const from = p.recordedAt.getTime() - days * DAY_MS;
+    let sum = 0;
+    let n = 0;
+    for (let j = i; j >= 0 && sorted[j].recordedAt.getTime() > from; j--) {
+      sum += sorted[j].kg;
+      n++;
+    }
+    return { kg: sum / n, recordedAt: p.recordedAt };
+  });
+}
+
+export type WeightTrend = {
+  // Average of the records in the 7 days up to the latest record.
+  averageKg: number;
+  // Change from the 7 days before that, or null when that week has no records.
+  weekChangeKg: number | null;
+};
+
+// The weight to show as "now" and to compare with the goal. It is the 7-day average,
+// not the single latest weigh-in, so drinking water does not move "目標まであと".
+export function weightTrend(points: TrendPoint[]): WeightTrend | null {
+  if (points.length === 0) return null;
+  const latest = Math.max(...points.map((p) => p.recordedAt.getTime()));
+  const avgBetween = (from: number, to: number) => {
+    const inRange = points.filter((p) => p.recordedAt.getTime() > from && p.recordedAt.getTime() <= to);
+    return inRange.length > 0 ? inRange.reduce((s, p) => s + p.kg, 0) / inRange.length : null;
+  };
+  const week = AVG_DAYS * DAY_MS;
+  const averageKg = avgBetween(latest - week, latest) as number;
+  const before = avgBetween(latest - 2 * week, latest - week);
+  return { averageKg, weekChangeKg: before === null ? null : averageKg - before };
+}

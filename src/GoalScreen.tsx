@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { type Palette, usePalette, useStyles } from './theme';
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
+import { forecastGoal, weightTrend } from './trend';
 
 type Props = {
   goalKg: number | null;
-  latest: WeightEntry | null;
+  entries: WeightEntry[];
   onSetGoal: (kg: number | null) => void;
   stepGoal: number;
   onSetStepGoal: (steps: number) => void;
@@ -25,7 +26,7 @@ function parseStepGoal(raw: string): number | null {
 // Lets the user set a target weight and a daily step goal.
 export function GoalScreen({
   goalKg,
-  latest,
+  entries,
   onSetGoal,
   stepGoal,
   onSetStepGoal,
@@ -60,8 +61,10 @@ export function GoalScreen({
     onSetStepGoal(steps);
   }
 
-  const remaining =
-    goalKg !== null && latest !== null ? latest.kg - goalKg : null;
+  // Measured from the 7-day average, the same as the Today screen.
+  const trend = weightTrend(entries);
+  const remaining = goalKg !== null && trend !== null ? trend.averageKg - goalKg : null;
+  const forecast = goalKg !== null ? forecastGoal(entries, goalKg) : null;
 
   return (
     <View style={styles.wrap}>
@@ -77,12 +80,15 @@ export function GoalScreen({
         {remaining !== null ? (
           <Text style={styles.sub}>
             {remaining > 0
-              ? `現在より あと ${formatWeight(remaining)} kg`
+              ? `7日間の平均（${formatWeight(trend!.averageKg)} kg）から あと ${formatWeight(remaining)} kg`
               : '目標に到達しています'}
           </Text>
         ) : (
           <Text style={styles.sub}>体重を記録すると、目標までの差が表示されます。</Text>
         )}
+        {forecast && remaining !== null && remaining > 0 ? (
+          <Text style={styles.sub}>{forecast.message}</Text>
+        ) : null}
 
         <View style={styles.form}>
           <TextInput

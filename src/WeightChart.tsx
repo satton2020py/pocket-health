@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import Svg, { Circle, Line, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 import { type Palette, usePalette, useStyles } from './theme';
 import { formatWeight, type WeightEntry } from './weight';
-import { forecastGoal } from './trend';
+import { forecastGoal, movingAverage } from './trend';
 
 type Props = {
   entries: WeightEntry[];
@@ -102,6 +102,12 @@ export function WeightChart({ entries, goalKg }: Props) {
     TOP + (1 - (kg - tickMin) / (tickMax - tickMin)) * plotH;
 
   const points = visible.map((e) => `${x(e.recordedAt)},${y(e.kg)}`).join(' ');
+  // The 7-day average over all records, cut to this period. It is the main line; the daily
+  // weigh-ins are drawn lighter behind it.
+  const avgPoints = movingAverage(entries)
+    .filter((a) => a.recordedAt >= start && a.recordedAt <= now)
+    .map((a) => `${x(a.recordedAt)},${y(a.kg)}`)
+    .join(' ');
 
   // Four evenly spaced date labels across the period.
   const dateMarks = [0, 1 / 3, 2 / 3, 1].map((f) => ({
@@ -201,20 +207,29 @@ export function WeightChart({ entries, goalKg }: Props) {
           <Polyline
             points={points}
             fill="none"
-            stroke={p.accent}
-            strokeWidth={3}
+            stroke={p.accentSoft}
+            strokeWidth={1.5}
             strokeLinejoin="round"
             strokeLinecap="round"
+            opacity={0.6}
           />
           {visible.map((e) => (
             <Circle
               key={e.id}
               cx={x(e.recordedAt)}
               cy={y(e.kg)}
-              r={4.5}
-              fill={p.accent}
+              r={3.5}
+              fill={p.accentSoft}
             />
           ))}
+          <Polyline
+            points={avgPoints}
+            fill="none"
+            stroke={p.accent}
+            strokeWidth={3.5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
         </Svg>
       </View>
 
@@ -223,9 +238,10 @@ export function WeightChart({ entries, goalKg }: Props) {
           この期間の変化 {change > 0 ? '+' : ''}
           {formatWeight(change)} kg（{formatWeight(first.kg)} → {formatWeight(last.kg)} kg）
         </Text>
-        {goalKg !== null ? (
-          <Text style={styles.sub}>赤い点線は目標体重 {formatWeight(goalKg)} kg です。</Text>
-        ) : null}
+        <Text style={styles.sub}>
+          太い線は7日間の平均、薄い点は毎回の記録です。
+          {goalKg !== null ? `赤い点線は目標体重 ${formatWeight(goalKg)} kg です。` : ''}
+        </Text>
       </View>
 
       <View style={styles.card}>

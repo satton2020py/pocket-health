@@ -1,8 +1,18 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState, type ComponentType } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
+import {
+  AppState,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import type { WeightEntry } from './src/weight';
-import { DEFAULT_STEP_GOAL, TodayScreen } from './src/TodayScreen';
+import { DEFAULT_STEP_GOAL, TodayScreen, type StepsStatus } from './src/TodayScreen';
 import { RecordsScreen } from './src/RecordsScreen';
 import { GoalScreen } from './src/GoalScreen';
 import { SettingsScreen } from './src/SettingsScreen';
@@ -57,6 +67,10 @@ export default function App() {
   const [sources, setSources] = useState<StepSource[]>([]);
   const [stepSource, setStepSource] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [stepsStatus, setStepsStatus] = useState<StepsStatus>('loading');
+  const [refreshing, setRefreshing] = useState(false);
+  // True while Health Connect is being read, so a pull and a return to the app do not read twice at once.
+  const syncing = useRef(false);
   const [sleep, setSleep] = useState<{ hours: number; start: Date; end: Date } | null>(null);
   const [nights, setNights] = useState<SleepNight[]>([]);
   const [sleepMessage, setSleepMessage] = useState<string | null>(null);
@@ -223,7 +237,7 @@ export default function App() {
     setSleep(null);
     setSleepMessage(
       r.reason === 'denied'
-        ? '睡眠の読み取りが許可されていません。設定タブから許可できます。'
+        ? '睡眠の読み取りが許可されていません。設定タブの「Health Connectを許可して再取得」から許可できます。'
         : '睡眠を取得できませんでした。',
     );
   }
@@ -270,8 +284,27 @@ export default function App() {
 
   // Reads steps first and sleep after, one at a time.
   async function syncFromHealthConnect(preferred: string | null = stepSource) {
+    if (syncing.current) return;
+    syncing.current = true;
+    try {
+      await readHealthConnect(preferred);
+    } finally {
+      syncing.current = false;
+    }
+  }
+
+  async function readHealthConnect(preferred: string | null) {
     setSyncMessage('Health Connectから取得しています…');
     const result = await readRecentSteps(7, preferred);
+    setStepsStatus(
+      result.ok
+        ? 'ok'
+        : result.reason === 'denied'
+          ? 'denied'
+          : result.reason === 'unsupported' || result.reason === 'unavailable'
+            ? 'unsupported'
+            : 'error',
+    );
     if (result.ok) {
       setDaily(result.daily);
       setActivity(result.today);
@@ -323,6 +356,28 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The latest version of the read, for the listener below, which is set up only once.
+  const syncRef = useRef(syncFromHealthConnect);
+  syncRef.current = syncFromHealthConnect;
+  const onboardedRef = useRef(onboarded);
+  onboardedRef.current = onboarded;
+
+  // Reads steps and sleep again whenever the app comes back to the front, so the numbers
+  // are not left from the morning when the app was kept open in the background.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && onboardedRef.current) syncRef.current();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Pull down on any tab to read Health Connect again.
+  async function refresh() {
+    setRefreshing(true);
+    await syncFromHealthConnect();
+    setRefreshing(false);
+  }
+
   if (onboarded === null) {
     return <View style={styles.container} />;
   }
@@ -348,16 +403,27 @@ export default function App() {
         style={styles.flex}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            colors={[palette.accent]}
+            tintColor={palette.accent}
+            progressBackgroundColor={palette.surface}
+          />
+        }
       >
         {tab === 'today' ? (
           <TodayScreen
+            entries={entries}
             latest={latestEntry}
             goalKg={goalKg}
             onAddWeight={addWeight}
             weightError={weightError}
             steps={steps}
             stepGoal={stepGoal}
-            daily={daily}
+            stepsStatus={stepsStatus}
+            onAllowHealth={allowAndSync}
             activity={activity}
             sleep={sleep}
             sleepMessage={sleepMessage}
@@ -372,11 +438,13 @@ export default function App() {
             weightError={weightError}
             nights={nights}
             sleepMessage={sleepMessage}
+            daily={daily}
+            stepGoal={stepGoal}
           />
         ) : tab === 'goal' ? (
           <GoalScreen
             goalKg={goalKg}
-            latest={latestEntry}
+            entries={entries}
             onSetGoal={changeGoalKg}
             stepGoal={stepGoal}
             onSetStepGoal={changeStepGoal}
