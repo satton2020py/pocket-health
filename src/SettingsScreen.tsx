@@ -7,10 +7,18 @@ type Props = {
   sources: StepSource[];
   chosen: string | null;
   onSelectSource: (origin: string) => void;
+  syncMessage: string | null;
+  onResync: () => void;
 };
 
 // Settings. Choosing which app's step count to use lives here, not on the Today screen.
-export function SettingsScreen({ sources, chosen, onSelectSource }: Props) {
+export function SettingsScreen({
+  sources,
+  chosen,
+  onSelectSource,
+  syncMessage,
+  onResync,
+}: Props) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>設定</Text>
@@ -46,6 +54,14 @@ export function SettingsScreen({ sources, chosen, onSelectSource }: Props) {
             </View>
           </>
         )}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Health Connect</Text>
+        <Pressable onPress={onResync} accessibilityRole="button" style={styles.resyncBtn}>
+          <Text style={styles.resyncText}>Health Connectから再取得</Text>
+        </Pressable>
+        {syncMessage ? <Text style={styles.sub}>{syncMessage}</Text> : null}
       </View>
     </View>
   );
@@ -101,5 +117,16 @@ const styles = StyleSheet.create({
   },
   sourceTextOn: {
     color: '#FFFFFF',
+  },
+  resyncBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: palette.accent,
+  },
+  resyncText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

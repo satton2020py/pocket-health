@@ -349,14 +349,6 @@ export default function App() {
             sleepMessage={sleepMessage}
             onSaveSleep={saveManualSleep}
           />
-          <Pressable
-            style={styles.smallBtn}
-            onPress={() => syncFromHealthConnect()}
-            accessibilityRole="button"
-          >
-            <Text style={styles.ctaText}>Health Connectから再取得</Text>
-          </Pressable>
-          {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
         </ScrollView>
       ) : tab === 'goal' ? (
         <ScrollView
@@ -381,6 +373,8 @@ export default function App() {
             sources={sources}
             chosen={stepSource}
             onSelectSource={selectSource}
+            syncMessage={syncMessage}
+            onResync={() => syncFromHealthConnect()}
           />
         </ScrollView>
       ) : tab === 'graph' ? (
