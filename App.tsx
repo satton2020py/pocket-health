@@ -42,6 +42,8 @@ import { deleteWeight, loadWeights, saveWeight, updateWeight } from './src/weigh
 import { loadLocalWeights, saveLocalWeights } from './src/localWeights';
 import { newHealthWeights } from './src/healthWeights';
 import { pickWeightsCsv, shareWeightsCsv } from './src/csv';
+import { updateWidget } from './src/widget/update';
+import { weightTrend } from './src/trend';
 import { loadGoals, saveGoals } from './src/goalStore';
 import { loadOnboarded, saveOnboarded } from './src/onboarding';
 import type { User } from '@react-native-firebase/auth';
@@ -501,6 +503,18 @@ function App() {
     });
     return () => sub.remove();
   }, []);
+
+  // Keeps the home-screen widget in step with the numbers on the Today screen.
+  useEffect(() => {
+    const trend = weightTrend(entries);
+    updateWidget({
+      steps: stepsStatus === 'ok' ? steps : null,
+      stepGoal,
+      averageKg: trend?.averageKg ?? null,
+      remainingKg: trend && goalKg !== null ? trend.averageKg - goalKg : null,
+      updatedAt: Date.now(),
+    });
+  }, [steps, stepsStatus, stepGoal, entries, goalKg]);
 
   // Pull down on any tab to read Health Connect again.
   async function refresh() {
