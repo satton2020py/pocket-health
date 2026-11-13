@@ -341,11 +341,11 @@ export default function App() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <StatusBar style="auto" />
       <ScrollView
-        style={styles.body}
+        style={styles.flex}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
@@ -404,7 +404,7 @@ export default function App() {
       <View style={styles.tabBar} accessibilityRole="tablist">
         {TABS.map(({ key, label, Icon }) => {
           const on = tab === key;
-          const color = on ? palette.accent : palette.muted;
+          const color = on ? palette.accent : palette.tabInactive;
           return (
             <Pressable
               key={key}
@@ -427,8 +427,10 @@ export default function App() {
 const makeStyles = (p: Palette) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: p.bg },
+    flex: { flex: 1 },
     body: { flex: 1, paddingTop: 56, paddingHorizontal: 20 },
-    scroll: { paddingBottom: 32 },
+    // Padding sits on the content, not the scroll view, so the last card can scroll fully into view.
+    scroll: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 48 },
     tabBar: {
       flexDirection: 'row',
       backgroundColor: p.surface,
@@ -439,5 +441,5 @@ const makeStyles = (p: Palette) =>
       paddingBottom: 28,
     },
     tab: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 },
-    tabText: { fontSize: 12, fontWeight: '700' },
+    tabText: { fontSize: 13, fontWeight: '800' },
   });

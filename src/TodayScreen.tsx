@@ -191,7 +191,7 @@ function SleepCard({
 const CHART_H = 140;
 const BAR_W = 22;
 
-// Weight first (the main goal), then steps and last night's sleep.
+// Steps first, then the weight entry and last night's sleep.
 export function TodayScreen(props: Props) {
   const { steps, stepGoal, daily, activity } = props;
   const styles = useStyles(makeStyles);
@@ -224,13 +224,6 @@ export function TodayScreen(props: Props) {
     <View style={styles.wrap}>
       <Text style={styles.title}>今日 {dayLabel(new Date())}</Text>
 
-      <WeightCard
-        latest={props.latest}
-        goalKg={props.goalKg}
-        onAdd={props.onAddWeight}
-        error={props.weightError}
-      />
-
       <View style={[styles.card, styles.center]}>
         <Text style={[styles.cardTitle, styles.stretch]}>歩数</Text>
         <View style={styles.ringBox}>
@@ -255,6 +248,13 @@ export function TodayScreen(props: Props) {
           {Math.round(activity.kcal).toLocaleString('ja-JP')} kcal
         </Text>
       </View>
+
+      <WeightCard
+        latest={props.latest}
+        goalKg={props.goalKg}
+        onAdd={props.onAddWeight}
+        error={props.weightError}
+      />
 
       <SleepCard sleep={props.sleep} sleepMessage={props.sleepMessage} onSave={props.onSaveSleep} />
 
