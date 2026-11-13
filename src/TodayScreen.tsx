@@ -76,8 +76,8 @@ export function sourceLabel(origin: string): string {
   // Package names contain dots. An id without dots is not a package name, so show it as unknown.
   if (!origin.includes('.')) return '不明なアプリ';
   const last = origin.split('.').pop() ?? origin;
-  // A long hex id after the last dot is not a readable app name either.
-  if (/^[0-9a-f]{16,}$/i.test(last)) return '不明なアプリ';
+  // A long id made of letters and digits (no words) is not a readable app name either.
+  if (/^[a-z0-9]{20,}$/i.test(last) && /\d/.test(last)) return '不明なアプリ';
   return last;
 }
 
