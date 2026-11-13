@@ -115,7 +115,7 @@ export function WeightChart({ entries, goalKg }: Props) {
     .join(' ');
   const selected = visible.find((e) => e.id === selectedId) ?? null;
   const selectedAvg = selected
-    ? averages.find((a) => a.recordedAt.getTime() === selected.recordedAt.getTime())
+    ? averages.find((a) => a.recordedAt.toDateString() === selected.recordedAt.toDateString())
     : undefined;
 
   // Four evenly spaced date labels across the period.

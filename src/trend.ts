@@ -12,6 +12,19 @@ export type Forecast = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Keeps only the first record of each day. Weighing again in the evening (after meals)
+// would otherwise pull the averages and the forecast up and down within one day.
+export function firstOfEachDay<T extends TrendPoint>(points: T[]): T[] {
+  const sorted = [...points].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+  const seen = new Set<string>();
+  return sorted.filter((p) => {
+    const day = p.recordedAt.toDateString();
+    if (seen.has(day)) return false;
+    seen.add(day);
+    return true;
+  });
+}
 const WINDOW_DAYS = 30;
 const MIN_POINTS = 3;
 const MIN_SPAN_DAYS = 7;
@@ -25,7 +38,7 @@ export function forecastGoal(
   now: Date = new Date(),
 ): Forecast {
   const cutoff = now.getTime() - WINDOW_DAYS * DAY_MS;
-  const recent = points
+  const recent = firstOfEachDay(points)
     .filter((p) => p.recordedAt.getTime() >= cutoff && p.recordedAt.getTime() <= now.getTime())
     .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
 
@@ -99,7 +112,7 @@ const AVG_DAYS = 7;
 // change the picture much. Uses all records, so the first days of a period still have
 // the days before them.
 export function movingAverage<T extends TrendPoint>(points: T[], days = AVG_DAYS): { kg: number; recordedAt: Date }[] {
-  const sorted = [...points].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+  const sorted = firstOfEachDay(points);
   return sorted.map((p, i) => {
     const from = p.recordedAt.getTime() - days * DAY_MS;
     let sum = 0;
@@ -121,8 +134,9 @@ export type WeightTrend = {
 
 // The weight to show as "now" and to compare with the goal. It is the 7-day average,
 // not the single latest weigh-in, so drinking water does not move "目標まであと".
-export function weightTrend(points: TrendPoint[]): WeightTrend | null {
-  if (points.length === 0) return null;
+export function weightTrend(all: TrendPoint[]): WeightTrend | null {
+  if (all.length === 0) return null;
+  const points = firstOfEachDay(all);
   const latest = Math.max(...points.map((p) => p.recordedAt.getTime()));
   const avgBetween = (from: number, to: number) => {
     const inRange = points.filter((p) => p.recordedAt.getTime() > from && p.recordedAt.getTime() <= to);

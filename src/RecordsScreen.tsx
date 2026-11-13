@@ -10,9 +10,6 @@ import type { SleepNight } from './sleep';
 import type { DailySteps } from './healthConnect';
 import { StepsChart } from './StepsChart';
 
-// The sleep the app aims for, from the project's first goals (7 hours).
-const SLEEP_TARGET_HOURS = 7;
-
 type Props = {
   entries: WeightEntry[];
   goalKg: number | null;
@@ -23,6 +20,8 @@ type Props = {
   sleepMessage: string | null;
   daily: DailySteps[];
   stepGoal: number;
+  // Hours of sleep to aim for, set on the Goal tab.
+  sleepGoal: number;
 };
 
 const timeOf = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -158,7 +157,11 @@ function WeightRecords(props: Props) {
 const CHART_H = 140;
 const BAR_W = 22;
 
-function SleepRecords({ nights, sleepMessage }: Pick<Props, 'nights' | 'sleepMessage'>) {
+function SleepRecords({
+  nights,
+  sleepMessage,
+  sleepGoal: SLEEP_TARGET_HOURS,
+}: Pick<Props, 'nights' | 'sleepMessage' | 'sleepGoal'>) {
   const styles = useStyles(makeStyles);
   const p = usePalette();
   const { width: windowWidth } = useWindowDimensions();
@@ -288,7 +291,7 @@ export function RecordsScreen(props: Props) {
       {kind === 'weight' ? (
         <WeightRecords {...props} />
       ) : kind === 'sleep' ? (
-        <SleepRecords nights={props.nights} sleepMessage={props.sleepMessage} />
+        <SleepRecords nights={props.nights} sleepMessage={props.sleepMessage} sleepGoal={props.sleepGoal} />
       ) : (
         <StepsChart
           daily={props.daily}

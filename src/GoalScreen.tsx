@@ -11,9 +11,14 @@ type Props = {
   onSetGoal: (kg: number | null) => void;
   stepGoal: number;
   onSetStepGoal: (steps: number) => void;
+  sleepGoal: number;
+  onSetSleepGoal: (hours: number) => void;
   // A save failure, shown on this screen.
   error: string | null;
 };
+
+export const DEFAULT_SLEEP_GOAL = 7;
+const SLEEP_PRESETS = [6, 6.5, 7, 7.5, 8];
 
 // Common daily step goals, so changing the goal is one tap.
 const STEP_PRESETS = [6000, 8000, 10000];
@@ -34,6 +39,8 @@ export function GoalScreen({
   onSetGoal,
   stepGoal,
   onSetStepGoal,
+  sleepGoal,
+  onSetSleepGoal,
   error,
 }: Props) {
   const styles = useStyles(makeStyles);
@@ -192,7 +199,27 @@ export function GoalScreen({
         </Pressable>
       </View>
 
-      <Text style={styles.sub}>睡眠は1日7時間を目安に、記録タブで確認できます。</Text>
+      <View style={styles.card}>
+        <Text style={styles.label}>睡眠の目標</Text>
+        <Text style={styles.value}>{sleepGoal} 時間</Text>
+        <View style={styles.chipRow}>
+          {SLEEP_PRESETS.map((h) => {
+            const on = sleepGoal === h;
+            return (
+              <Pressable
+                key={h}
+                onPress={() => onSetSleepGoal(h)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                style={[styles.chip, on && styles.chipOn]}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{h}時間</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={styles.sub}>記録タブの睡眠グラフに、この時間の線が出ます。</Text>
+      </View>
     </View>
   );
 }

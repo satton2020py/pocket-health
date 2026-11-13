@@ -3,7 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Target weight and step goal kept on the phone while signed out.
 const KEY = 'goals.local.v1';
 
-export type LocalGoals = { goalKg: number | null; stepGoal: number };
+// sleepGoal may be missing in goals saved by an older version.
+export type LocalGoals = { goalKg: number | null; stepGoal: number; sleepGoal?: number };
 
 // Any read or write failure is treated as "nothing saved" so the app keeps working.
 export async function loadLocalGoals(): Promise<LocalGoals | null> {

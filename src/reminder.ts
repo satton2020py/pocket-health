@@ -26,30 +26,64 @@ async function saveReminder(r: Reminder): Promise<void> {
   }
 }
 
-// Turns the daily reminder on or off and sets its time. Returns false when the
-// notification permission is refused.
-export async function applyReminder(r: Reminder): Promise<boolean> {
-  await Notifications.cancelAllScheduledNotificationsAsync();
-  if (!r.enabled) {
-    await saveReminder(r);
-    return true;
-  }
+// Asks for the notification permission. Returns false when it is refused.
+export async function ensureNotificationPermission(): Promise<boolean> {
   const perm = await Notifications.requestPermissionsAsync();
-  if (!perm.granted) return false;
+  return perm.granted;
+}
 
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'ポケットヘルス',
-      body: '体重と睡眠を記録しましょう。',
-    },
-    trigger: {
-      type: SchedulableTriggerInputTypes.DAILY,
-      hour: r.hour,
-      minute: r.minute,
-    },
-  });
+// Saves the reminder setting on the phone.
+export async function storeReminder(r: Reminder): Promise<void> {
   await saveReminder(r);
-  return true;
+}
+
+const ID_PREFIX = 'daily-reminder-';
+// How many days ahead are booked. Opening the app books them again from that day.
+const DAYS_AHEAD = 30;
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+
+let queue: Promise<void> = Promise.resolve();
+
+// Books one reminder per day for the next 30 days, skipping today when a weight is
+// already recorded today. Each day is booked on its own (not as a repeating alarm), so a
+// day can be skipped. Only this app's reminders are replaced; a test notification stays.
+// Calls run one after another, so two quick changes never leave double reminders.
+export function scheduleReminders(r: Reminder, lastRecordedAt: Date | null): Promise<void> {
+  queue = queue.then(async () => {
+    const booked = await Notifications.getAllScheduledNotificationsAsync();
+    for (const n of booked) {
+      // A repeating daily alarm is from an older version of the app; it is replaced too.
+      const oldDaily = (n.trigger as { type?: string } | null)?.type === 'daily';
+      if (n.identifier.startsWith(ID_PREFIX) || oldDaily) {
+        await Notifications.cancelScheduledNotificationAsync(n.identifier);
+      }
+    }
+    if (!r.enabled) return;
+    // Do not ask here: this runs on start and after each record. Asking is done when the
+    // user turns the reminder on.
+    const perm = await Notifications.getPermissionsAsync();
+    if (!perm.granted) return;
+
+    const now = new Date();
+    for (let i = 0; i < DAYS_AHEAD; i++) {
+      const at = new Date(now);
+      at.setDate(now.getDate() + i);
+      at.setHours(r.hour, r.minute, 0, 0);
+      if (at <= now) continue;
+      if (lastRecordedAt && sameDay(lastRecordedAt, at)) continue;
+      await Notifications.scheduleNotificationAsync({
+        identifier: `${ID_PREFIX}${at.toDateString()}`,
+        content: {
+          title: 'ポケットヘルス',
+          body: '今日の体重がまだ記録されていません。',
+        },
+        trigger: { type: SchedulableTriggerInputTypes.DATE, date: at },
+      });
+    }
+  }).catch(() => {
+    // A failed booking is tried again the next time the app opens or a weight is recorded.
+  });
+  return queue;
 }
 
 // Sends one test notification about a minute from now, so the setting can be checked.

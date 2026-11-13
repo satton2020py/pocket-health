@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import type { WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen, type StepsStatus } from './src/TodayScreen';
+import { DEFAULT_SLEEP_GOAL } from './src/GoalScreen';
 import { RecordsScreen } from './src/RecordsScreen';
 import { GoalScreen } from './src/GoalScreen';
 import { SettingsScreen } from './src/SettingsScreen';
@@ -21,10 +22,12 @@ import { OnboardingScreen } from './src/OnboardingScreen';
 import { nightFrom, readLastNightSleep, readSleepHistory, writeSleep, type SleepNight } from './src/sleep';
 import type { Clock } from './src/pickers';
 import {
-  applyReminder,
   DEFAULT_REMINDER,
+  ensureNotificationPermission,
   loadReminder,
+  scheduleReminders,
   scheduleTestReminder,
+  storeReminder,
   type Reminder,
 } from './src/reminder';
 import { loadLocalGoals, saveLocalGoals } from './src/localGoals';
@@ -79,6 +82,8 @@ export default function App() {
   const [sleepMessage, setSleepMessage] = useState<string | null>(null);
   const [reminder, setReminder] = useState<Reminder>(DEFAULT_REMINDER);
   const [reminderNote, setReminderNote] = useState<string | null>(null);
+  // False until the saved setting is read, so the default (off) never cancels saved reminders.
+  const reminderLoaded = useRef(false);
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   // Each screen shows its own errors, so a failure appears where it happened.
   const [weightError, setWeightError] = useState<string | null>(null);
@@ -86,6 +91,7 @@ export default function App() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [goalKg, setGoalKg] = useState<number | null>(null);
   const [stepGoal, setStepGoal] = useState(DEFAULT_STEP_GOAL);
+  const [sleepGoal, setSleepGoal] = useState(DEFAULT_SLEEP_GOAL);
 
   const [user, setUser] = useState<User | null>(null);
 
@@ -120,11 +126,12 @@ export default function App() {
         if (saved) {
           setGoalKg(saved.goalKg);
           setStepGoal(saved.stepGoal);
+          setSleepGoal(saved.sleepGoal);
           // Use the app the user chose by hand last time, if any.
           if (saved.stepSource) syncFromHealthConnect(saved.stepSource);
         } else {
           // First sign-in: keep the goals set on this phone.
-          await saveGoals(user.uid, { goalKg, stepGoal });
+          await saveGoals(user.uid, { goalKg, stepGoal, sleepGoal });
         }
         setSettingsError(null);
       } catch {
@@ -136,7 +143,7 @@ export default function App() {
   }, [user]);
 
   // Updates goals on screen and saves them to the cloud when signed in, otherwise to the phone.
-  function persistGoals(next: { goalKg: number | null; stepGoal: number }) {
+  function persistGoals(next: { goalKg: number | null; stepGoal: number; sleepGoal: number }) {
     setGoalError(null);
     if (user) {
       saveGoals(user.uid, next).catch(() => setGoalError('目標を保存できませんでした。'));
@@ -147,12 +154,25 @@ export default function App() {
 
   function changeGoalKg(kg: number | null) {
     setGoalKg(kg);
-    persistGoals({ goalKg: kg, stepGoal });
+    persistGoals({ goalKg: kg, stepGoal, sleepGoal });
   }
 
   function changeStepGoal(next: number) {
     setStepGoal(next);
-    persistGoals({ goalKg, stepGoal: next });
+    persistGoals({ goalKg, stepGoal: next, sleepGoal });
+  }
+
+  function changeSleepGoal(next: number) {
+    setSleepGoal(next);
+    persistGoals({ goalKg, stepGoal, sleepGoal: next });
+  }
+
+  // Shows the goals kept on this phone, or the defaults when there are none.
+  async function showLocalGoals() {
+    const local = await loadLocalGoals();
+    setGoalKg(local?.goalKg ?? null);
+    setStepGoal(local?.stepGoal ?? DEFAULT_STEP_GOAL);
+    setSleepGoal(local?.sleepGoal ?? DEFAULT_SLEEP_GOAL);
   }
 
   async function login() {
@@ -173,6 +193,8 @@ export default function App() {
     await signOut();
     setEntries([]);
     setUser(null);
+    // The account's goals leave with the account; the phone's own goals come back.
+    await showLocalGoals();
   }
 
   // Adds a weight at the given time. Returns true when saved.
@@ -275,19 +297,28 @@ export default function App() {
   }
 
   // Turns the reminder on or off and sets its time. Shows a note when the phone refuses notifications.
+  // The booking itself is done by the effect below.
   async function changeReminder(r: Reminder) {
-    setReminder(r);
     setReminderNote(null);
     try {
-      const ok = await applyReminder(r);
-      if (!ok) {
-        setReminder({ ...r, enabled: false });
+      if (r.enabled && !(await ensureNotificationPermission())) {
         setReminderNote('通知が許可されていないため、リマインダーを設定できません。');
+        return;
       }
+      setReminder(r);
+      await storeReminder(r);
     } catch {
       setReminderNote('リマインダーを設定できませんでした。');
     }
   }
+
+  // Books the reminders again when the setting changes, when a weight is recorded (so
+  // today's reminder is skipped), and on start (so the next 30 days stay booked).
+  const lastRecordedTime = latestEntry?.recordedAt.getTime() ?? null;
+  useEffect(() => {
+    if (!reminderLoaded.current) return;
+    scheduleReminders(reminder, lastRecordedTime === null ? null : new Date(lastRecordedTime));
+  }, [reminder, lastRecordedTime]);
 
   // Reads steps first and sleep after, one at a time.
   async function syncFromHealthConnect(preferred: string | null = stepSource) {
@@ -348,12 +379,12 @@ export default function App() {
   }
 
   useEffect(() => {
-    loadReminder().then(setReminder);
-    loadLocalGoals().then((local) => {
-      if (!local) return;
-      setGoalKg(local.goalKg);
-      setStepGoal(local.stepGoal);
+    loadReminder().then((r) => {
+      reminderLoaded.current = true;
+      // A new object, so the booking effect runs even when the saved setting is the default.
+      setReminder({ ...r });
     });
+    showLocalGoals();
     loadOnboarded().then((done) => {
       setOnboarded(done);
       // Only read what is already allowed. The first-run screen asks for permission.
@@ -448,6 +479,7 @@ export default function App() {
             sleepMessage={sleepMessage}
             daily={daily}
             stepGoal={stepGoal}
+            sleepGoal={sleepGoal}
           />
         ) : tab === 'goal' ? (
           <GoalScreen
@@ -456,6 +488,8 @@ export default function App() {
             onSetGoal={changeGoalKg}
             stepGoal={stepGoal}
             onSetStepGoal={changeStepGoal}
+            sleepGoal={sleepGoal}
+            onSetSleepGoal={changeSleepGoal}
             error={goalError}
           />
         ) : (
