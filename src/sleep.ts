@@ -3,6 +3,7 @@ import {
   getSdkStatus,
   initialize,
   insertRecords,
+  getGrantedPermissions,
   readRecords,
   requestPermission,
   SdkAvailabilityStatus,
@@ -12,8 +13,93 @@ export type SleepResult =
   | { ok: true; night: { start: Date; end: Date; hours: number } | null }
   | { ok: false; reason: 'unsupported' | 'unavailable' | 'denied' | 'error'; detail?: string };
 
-// Reads the most recent sleep session that ended in the last 36 hours (last night).
-// Health Connect stores sleep as sessions with a start and an end time.
+type Session = { start: Date; end: Date; origin: string };
+
+const HOUR = 60 * 60 * 1000;
+
+// The night that belongs to a morning: sessions whose middle falls between 18:00 the day
+// before and 12:00 on that morning. A nap after lunch or in the early evening is left out.
+function belongsTo(s: Session, morning: Date): boolean {
+  const mid = (s.start.getTime() + s.end.getTime()) / 2;
+  const from = morning.getTime() - 6 * HOUR;
+  const to = morning.getTime() + 12 * HOUR;
+  return mid >= from && mid < to;
+}
+
+// Total time covered by the sessions, counting overlaps once.
+function coveredHours(sessions: Session[]): number {
+  const sorted = [...sessions].sort((a, b) => a.start.getTime() - b.start.getTime());
+  let total = 0;
+  let curStart = 0;
+  let curEnd = 0;
+  for (const s of sorted) {
+    const st = s.start.getTime();
+    const en = s.end.getTime();
+    if (st > curEnd) {
+      total += curEnd - curStart;
+      curStart = st;
+      curEnd = en;
+    } else if (en > curEnd) {
+      curEnd = en;
+    }
+  }
+  total += curEnd - curStart;
+  return total / HOUR;
+}
+
+// Works out one night from all sessions. A night split by waking up once is added together.
+// When several apps record the same night, only the app with the most sleep is used, so
+// the night is never counted twice.
+export function pickNight(
+  sessions: Session[],
+  morning: Date,
+): { start: Date; end: Date; hours: number } | null {
+  const mine = sessions.filter((s) => belongsTo(s, morning));
+  if (mine.length === 0) return null;
+  const byOrigin = new Map<string, Session[]>();
+  for (const s of mine) byOrigin.set(s.origin, [...(byOrigin.get(s.origin) ?? []), s]);
+  let best: { start: Date; end: Date; hours: number } | null = null;
+  for (const group of byOrigin.values()) {
+    const hours = Math.round(coveredHours(group) * 10) / 10;
+    if (!best || hours > best.hours) {
+      best = {
+        hours,
+        start: new Date(Math.min(...group.map((g) => g.start.getTime()))),
+        end: new Date(Math.max(...group.map((g) => g.end.getTime()))),
+      };
+    }
+  }
+  return best;
+}
+
+async function readSessions(from: Date): Promise<Session[]> {
+  const sessions: Session[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await readRecords('SleepSession', {
+      timeRangeFilter: { operator: 'between', startTime: from.toISOString(), endTime: new Date().toISOString() },
+      pageToken,
+    });
+    for (const r of page.records) {
+      sessions.push({
+        start: new Date(r.startTime),
+        end: new Date(r.endTime),
+        origin: r.metadata?.dataOrigin ?? 'unknown',
+      });
+    }
+    pageToken = page.pageToken || undefined;
+  } while (pageToken);
+  return sessions;
+}
+
+const startOfDay = (d: Date) => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+};
+
+// Reads last night's sleep: this morning's night, or before noon with nothing yet for
+// this morning (still up after midnight), the night before.
 export async function readLastNightSleep(): Promise<SleepResult> {
   if (Platform.OS !== 'android') return { ok: false, reason: 'unsupported' };
 
@@ -25,37 +111,20 @@ export async function readLastNightSleep(): Promise<SleepResult> {
     const initialized = await initialize();
     if (!initialized) return { ok: false, reason: 'unavailable', detail: 'initialize=false' };
 
-    const granted = await requestPermission([
-      { accessType: 'read', recordType: 'SleepSession' },
-    ]);
+    const granted = await getGrantedPermissions();
     const canRead = granted.some(
       (p) => p.accessType === 'read' && p.recordType === 'SleepSession',
     );
     if (!canRead) return { ok: false, reason: 'denied' };
 
     const now = new Date();
-    const from = new Date(now.getTime() - 36 * 60 * 60 * 1000);
-    const { records } = await readRecords('SleepSession', {
-      timeRangeFilter: {
-        operator: 'between',
-        startTime: from.toISOString(),
-        endTime: now.toISOString(),
-      },
-    });
-
-    // Use the session that ended most recently. Sessions from several apps can overlap,
-    // so only the latest one is shown rather than adding them up.
-    let latest: { start: Date; end: Date } | null = null;
-    for (const r of records) {
-      const end = new Date(r.endTime);
-      if (!latest || end > latest.end) {
-        latest = { start: new Date(r.startTime), end };
-      }
-    }
-    if (!latest) return { ok: true, night: null };
-
-    const hours = (latest.end.getTime() - latest.start.getTime()) / (60 * 60 * 1000);
-    return { ok: true, night: { ...latest, hours: Math.round(hours * 10) / 10 } };
+    const today = startOfDay(now);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const sessions = await readSessions(new Date(yesterday.getTime() - 12 * HOUR));
+    let night = pickNight(sessions, today);
+    if (!night && now.getHours() < 12) night = pickNight(sessions, yesterday);
+    return { ok: true, night };
   } catch (e) {
     return { ok: false, reason: 'error', detail: String((e as Error)?.message ?? e) };
   }
@@ -117,5 +186,41 @@ export async function writeSleep(start: Date, end: Date): Promise<string | null>
     return null;
   } catch (e) {
     return `保存できませんでした。（${String((e as Error)?.message ?? e)}）`;
+  }
+}
+
+export type SleepNight = { date: Date; hours: number; start: Date | null; end: Date | null };
+
+// Reads sleep for the last `days` mornings. Each night is filed under the morning it ends
+// (see pickNight for naps, split nights and several apps).
+export async function readSleepHistory(
+  days = 7,
+): Promise<{ ok: true; nights: SleepNight[] } | { ok: false }> {
+  if (Platform.OS !== 'android') return { ok: false };
+  try {
+    if ((await getSdkStatus()) !== SdkAvailabilityStatus.SDK_AVAILABLE) return { ok: false };
+    if (!(await initialize())) return { ok: false };
+    const granted = await getGrantedPermissions();
+    if (!granted.some((p) => p.accessType === 'read' && p.recordType === 'SleepSession')) {
+      return { ok: false };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nights: SleepNight[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      nights.push({ date: d, hours: 0, start: null, end: null });
+    }
+    // Start the evening before the first morning, so that night is included.
+    const sessions = await readSessions(new Date(nights[0].date.getTime() - 12 * HOUR));
+    for (const n of nights) {
+      const night = pickNight(sessions, n.date);
+      if (night) Object.assign(n, night);
+    }
+    return { ok: true, nights };
+  } catch {
+    return { ok: false };
   }
 }

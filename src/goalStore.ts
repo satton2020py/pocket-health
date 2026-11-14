@@ -9,6 +9,10 @@ import {
 export type SavedGoals = {
   goalKg: number | null;
   stepGoal: number;
+  // Hours of sleep to aim for each night.
+  sleepGoal: number;
+  // Height for BMI, or null when not entered.
+  heightCm: number | null;
   // The step app the user picked by hand. Only stored after a manual choice.
   stepSource: string | null;
 };
@@ -26,6 +30,8 @@ export async function loadGoals(uid: string): Promise<SavedGoals | null> {
   return {
     goalKg: typeof data.goalKg === 'number' ? data.goalKg : null,
     stepGoal: typeof data.stepGoal === 'number' ? data.stepGoal : 8000,
+    sleepGoal: typeof data.sleepGoal === 'number' ? data.sleepGoal : 7,
+    heightCm: typeof data.heightCm === 'number' ? data.heightCm : null,
     stepSource: typeof data.stepSource === 'string' ? data.stepSource : null,
   };
 }
