@@ -1,22 +1,30 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { palette } from './theme';
+import { type Palette, usePalette, useStyles } from './theme';
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
-import type { Reminder } from './reminder';
+import { forecastGoal, weightTrend } from './trend';
+import { WeightInput } from './WeightInput';
+import { bmi, bmiLabel, milestones } from './insights';
 
 type Props = {
   goalKg: number | null;
-  latest: WeightEntry | null;
+  entries: WeightEntry[];
   onSetGoal: (kg: number | null) => void;
   stepGoal: number;
   onSetStepGoal: (steps: number) => void;
-  reminder: Reminder;
-  reminderNote: string | null;
-  onSetReminder: (r: Reminder) => void;
-  onTestReminder: () => void;
+  sleepGoal: number;
+  onSetSleepGoal: (hours: number) => void;
+  heightCm: number | null;
+  onSetHeight: (cm: number | null) => void;
+  // A save failure, shown on this screen.
+  error: string | null;
 };
 
-const REMINDER_HOURS = [20, 21, 22, 23];
+export const DEFAULT_SLEEP_GOAL = 7;
+const SLEEP_PRESETS = [6, 6.5, 7, 7.5, 8];
+
+// Common daily step goals, so changing the goal is one tap.
+const STEP_PRESETS = [6000, 8000, 10000];
 
 // Parses a whole-number step goal. Returns null when it is not a sensible value.
 function parseStepGoal(raw: string): number | null {
@@ -30,18 +38,31 @@ function parseStepGoal(raw: string): number | null {
 // Lets the user set a target weight and a daily step goal.
 export function GoalScreen({
   goalKg,
-  latest,
+  entries,
   onSetGoal,
   stepGoal,
   onSetStepGoal,
-  reminder,
-  reminderNote,
-  onSetReminder,
-  onTestReminder,
+  sleepGoal,
+  onSetSleepGoal,
+  heightCm,
+  onSetHeight,
+  error,
 }: Props) {
-  const [input, setInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
+  const trend = weightTrend(entries);
+  // Starts from the current goal, or the 7-day average minus 3 kg (the project's first goal).
+  const [input, setInput] = useState(
+    goalKg !== null ? formatWeight(goalKg) : trend ? formatWeight(Math.round((trend.averageKg - 3) * 10) / 10) : '',
+  );
+  const [inputError, setError] = useState<string | null>(null);
   const [stepInput, setStepInput] = useState('');
+  const [heightInput, setHeightInput] = useState(heightCm !== null ? String(heightCm) : '');
+  const [heightError, setHeightError] = useState<string | null>(null);
+  // Fill the field once the saved height has loaded.
+  useEffect(() => {
+    if (heightCm !== null) setHeightInput(String(heightCm));
+  }, [heightCm]);
   const [stepError, setStepError] = useState<string | null>(null);
 
   function save() {
@@ -51,8 +72,17 @@ export function GoalScreen({
       return;
     }
     setError(null);
-    setInput('');
     onSetGoal(kg);
+  }
+
+  function saveHeight() {
+    const cm = Number(heightInput.trim().replace(',', '.'));
+    if (!/^\d{2,3}(\.\d)?$/.test(heightInput.trim().replace(',', '.')) || cm < 100 || cm > 230) {
+      setHeightError('100〜230cmの数字を入力してください（小数点1位まで）。');
+      return;
+    }
+    setHeightError(null);
+    onSetHeight(cm);
   }
 
   function saveSteps() {
@@ -66,64 +96,25 @@ export function GoalScreen({
     onSetStepGoal(steps);
   }
 
-  const remaining =
-    goalKg !== null && latest !== null ? latest.kg - goalKg : null;
+  // Measured from the 7-day average, the same as the Today screen.
+  const remaining = goalKg !== null && trend !== null ? trend.averageKg - goalKg : null;
+  const forecast = goalKg !== null ? forecastGoal(entries, goalKg) : null;
+
+  // How far along the way from the first record to the goal the 7-day average is.
+  const first =
+    entries.length > 0
+      ? entries.reduce((a, b) => (a.recordedAt < b.recordedAt ? a : b))
+      : null;
+  const progress =
+    goalKg !== null && first !== null && trend !== null && first.kg > goalKg
+      ? Math.min(1, Math.max(0, (first.kg - trend.averageKg) / (first.kg - goalKg)))
+      : null;
 
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>目標</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>毎日のリマインダー</Text>
-        <Text style={styles.sub}>
-          {reminder.enabled
-            ? `毎日 ${reminder.hour}:00 に通知します。`
-            : '通知はオフです。'}
-        </Text>
-        <View style={styles.reminderRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onSetReminder({ ...reminder, enabled: !reminder.enabled })}
-            style={[styles.reminderBtn, reminder.enabled && styles.reminderBtnOn]}
-          >
-            <Text style={[styles.reminderText, reminder.enabled && styles.reminderTextOn]}>
-              {reminder.enabled ? 'オフにする' : 'オンにする'}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={styles.reminderRow}>
-          {REMINDER_HOURS.map((h) => (
-            <Pressable
-              key={h}
-              accessibilityRole="button"
-              onPress={() => onSetReminder({ ...reminder, enabled: true, hour: h })}
-              style={[
-                styles.reminderBtn,
-                reminder.enabled && reminder.hour === h && styles.reminderBtnOn,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.reminderText,
-                  reminder.enabled && reminder.hour === h && styles.reminderTextOn,
-                ]}
-              >
-                {h}時
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={styles.reminderRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onTestReminder}
-            style={styles.reminderBtn}
-          >
-            <Text style={styles.reminderText}>1分後にテスト通知</Text>
-          </Pressable>
-        </View>
-        {reminderNote ? <Text style={styles.sub}>{reminderNote}</Text> : null}
-      </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <View style={styles.card}>
         <Text style={styles.label}>目標体重</Text>
@@ -133,29 +124,50 @@ export function GoalScreen({
         {remaining !== null ? (
           <Text style={styles.sub}>
             {remaining > 0
-              ? `現在より あと ${formatWeight(remaining)} kg`
+              ? `7日間の平均（${formatWeight(trend!.averageKg)} kg）から あと ${formatWeight(remaining)} kg`
               : '目標に到達しています'}
           </Text>
         ) : (
           <Text style={styles.sub}>体重を記録すると、目標までの差が表示されます。</Text>
         )}
+        {forecast && remaining !== null && remaining > 0 ? (
+          <Text style={styles.sub}>{forecast.message}</Text>
+        ) : null}
 
-        <View style={styles.form}>
-          <TextInput
-            style={styles.input}
-            value={input}
-            onChangeText={(text) => {
+        {progress !== null && first !== null ? (
+          <View style={styles.progressBox}>
+            <View style={styles.track}>
+              <View style={[styles.fill, { width: `${Math.round(progress * 100)}%` }]} />
+            </View>
+            <Text style={styles.sub}>
+              最初の記録 {formatWeight(first.kg)} kg から {Math.round(progress * 100)}% 進みました
+            </Text>
+          </View>
+        ) : null}
+
+        {goalKg !== null && first !== null && trend !== null && first.kg > goalKg ? (
+          <View style={styles.steps}>
+            <Text style={styles.label}>1kgごとの小さな目標</Text>
+            {milestones(first.kg, goalKg, trend.averageKg).map((m) => (
+              <Text key={m.kg} style={[styles.stepRow, m.reached && styles.stepDone]}>
+                {m.reached ? '✓' : '・'} {formatWeight(m.kg)} kg{m.kg === goalKg ? '（目標）' : ''}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
+        <View style={styles.formTop}>
+          <WeightInput
+            text={input}
+            onChange={(text) => {
               setInput(text);
               setError(null);
             }}
-            keyboardType="decimal-pad"
-            placeholder="例: 60.00"
-            placeholderTextColor={palette.placeholder}
-            accessibilityLabel="目標体重（kg）"
+            fallbackKg={goalKg ?? trend?.averageKg ?? 60}
+            label="目標体重（kg）"
           />
-          <Text style={styles.unit}>kg</Text>
         </View>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {inputError ? <Text style={styles.error}>{inputError}</Text> : null}
 
         <Pressable
           style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
@@ -175,6 +187,24 @@ export function GoalScreen({
         <Text style={styles.label}>1日の歩数目標</Text>
         <Text style={styles.value}>{stepGoal.toLocaleString('ja-JP')} 歩</Text>
 
+        <View style={styles.chipRow}>
+          {STEP_PRESETS.map((n) => {
+            const on = stepGoal === n;
+            return (
+              <Pressable
+                key={n}
+                onPress={() => onSetStepGoal(n)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                style={[styles.chip, on && styles.chipOn]}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{n.toLocaleString('ja-JP')}歩</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.sub}>ほかの歩数にするときは入力してください。</Text>
         <View style={styles.form}>
           <TextInput
             style={styles.input}
@@ -201,63 +231,95 @@ export function GoalScreen({
         </Pressable>
       </View>
 
-      <Text style={styles.sub}>睡眠の目標は次の段階で追加します。</Text>
+      <View style={styles.card}>
+        <Text style={styles.label}>睡眠の目標</Text>
+        <Text style={styles.value}>{sleepGoal} 時間</Text>
+        <View style={styles.chipRow}>
+          {SLEEP_PRESETS.map((h) => {
+            const on = sleepGoal === h;
+            return (
+              <Pressable
+                key={h}
+                onPress={() => onSetSleepGoal(h)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                style={[styles.chip, on && styles.chipOn]}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{h}時間</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={styles.sub}>記録タブの睡眠グラフに、この時間の線が出ます。</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>身長（BMIの計算に使います）</Text>
+        <Text style={styles.value}>{heightCm !== null ? `${heightCm} cm` : '未設定'}</Text>
+        {heightCm !== null && trend !== null ? (
+          <Text style={styles.sub}>
+            今のBMI {bmi(trend.averageKg, heightCm).toFixed(1)}（{bmiLabel(bmi(trend.averageKg, heightCm))}）
+            {goalKg !== null ? ` ／ 目標体重でのBMI ${bmi(goalKg, heightCm).toFixed(1)}` : ''}
+          </Text>
+        ) : null}
+        <View style={styles.form}>
+          <TextInput
+            style={styles.input}
+            value={heightInput}
+            onChangeText={(text) => {
+              setHeightInput(text);
+              setHeightError(null);
+            }}
+            keyboardType="decimal-pad"
+            placeholder="例: 170"
+            placeholderTextColor={palette.placeholder}
+            accessibilityLabel="身長（cm）"
+          />
+          <Text style={styles.unit}>cm</Text>
+        </View>
+        {heightError ? <Text style={styles.error}>{heightError}</Text> : null}
+        <Pressable
+          style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
+          onPress={saveHeight}
+          accessibilityRole="button"
+        >
+          <Text style={styles.ctaText}>身長を保存する</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
   wrap: {
     flex: 1,
     gap: 16,
   },
-  reminderRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingHorizontal: 4,
-  },
-  reminderBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: palette.line,
-  },
-  reminderBtnOn: {
-    backgroundColor: palette.accent,
-  },
-  reminderText: {
-    color: palette.muted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  reminderTextOn: {
-    color: '#FFFFFF',
-  },
   title: {
     fontSize: 22,
     fontWeight: '800',
-    color: palette.fg,
+    color: p.fg,
   },
   card: {
-    backgroundColor: palette.surface,
+    backgroundColor: p.surface,
     borderRadius: 16,
     padding: 16,
     gap: 8,
   },
   label: {
-    color: palette.muted,
+    color: p.muted,
     fontSize: 14,
     fontWeight: '700',
   },
   value: {
-    color: palette.fg,
+    color: p.fg,
     fontSize: 26,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
   sub: {
-    color: palette.muted,
+    color: p.muted,
     fontSize: 13,
   },
   form: {
@@ -268,39 +330,96 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: palette.bg,
+    backgroundColor: p.bg,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: palette.line,
+    borderColor: p.line,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 22,
     fontWeight: '800',
-    color: palette.fg,
+    color: p.fg,
     fontVariant: ['tabular-nums'],
+  },
+  steps: {
+    gap: 4,
+    marginTop: 4,
+  },
+  stepRow: {
+    color: p.muted,
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  stepDone: {
+    color: p.accent,
+    fontWeight: '800',
+  },
+  formTop: {
+    marginTop: 8,
+  },
+  progressBox: {
+    gap: 6,
+    marginTop: 4,
+  },
+  track: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: p.line,
+    overflow: 'hidden',
+  },
+  fill: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: p.accent,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  chip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: p.bg,
+    borderWidth: 1,
+    borderColor: p.line,
+  },
+  chipOn: {
+    backgroundColor: p.accent,
+    borderColor: p.accent,
+  },
+  chipText: {
+    color: p.muted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  chipTextOn: {
+    color: p.onAccent,
   },
   unit: {
     fontSize: 18,
     fontWeight: '700',
-    color: palette.muted,
+    color: p.muted,
   },
   error: {
-    color: '#B5523B',
+    color: p.error,
     fontSize: 13,
   },
   cta: {
-    backgroundColor: palette.accent,
+    backgroundColor: p.accent,
     borderRadius: 999,
     paddingVertical: 14,
     alignItems: 'center',
   },
   ctaText: {
-    color: '#FFFFFF',
+    color: p.onAccent,
     fontSize: 16,
     fontWeight: '800',
   },
   clear: {
-    color: palette.muted,
+    color: p.muted,
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 4,
