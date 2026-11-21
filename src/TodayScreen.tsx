@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { type Palette, usePalette, useStyles } from './theme';
-import { type Clock, clockText, DateTimePicker, dayLabel, TimePicker } from './pickers';
+import { type Clock, clockText, DateTimePicker, dayLabel, nowClock, QuickTime } from './pickers';
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
 import { useWeightText, WeightInput } from './WeightInput';
 import { weightTrend } from './trend';
@@ -179,30 +179,102 @@ function WeightCard({
   );
 }
 
-// Last night's sleep, with a folded form to enter it by hand.
+const LAST_SLEEP_KEY = 'sleep.lastManual.v1';
+
+const clockOf = (d: Date): Clock => ({ h: d.getHours(), m: d.getMinutes() });
+
+// Hours between a bedtime and a wake-up time, as nightFrom would save them.
+function hoursBetween(bed: Clock, wake: Clock): number {
+  const mins = (((wake.h * 60 + wake.m - (bed.h * 60 + bed.m)) % 1440) + 1440) % 1440;
+  return (mins === 0 ? 1440 : mins) / 60;
+}
+
+// Where the form starts: the last time typed by hand, else the latest night from
+// Health Connect, else 23:00 to 7:00.
+async function initialTimes(nights: SleepNight[]): Promise<{ bed: Clock; wake: Clock } | null> {
+  try {
+    const raw = await AsyncStorage.getItem(LAST_SLEEP_KEY);
+    if (raw) {
+      const v = JSON.parse(raw);
+      if (v?.bed && v?.wake) return { bed: v.bed, wake: v.wake };
+    }
+  } catch {
+    // Fall through to Health Connect.
+  }
+  const last = [...nights].reverse().find((n) => n.start && n.end);
+  if (last?.start && last.end) return { bed: clockOf(last.start), wake: clockOf(last.end) };
+  return null;
+}
+
+// Last night's sleep. With nothing recorded yet, the card offers last time's bedtime and
+// wake-up time so one tap on "この時間で記録" saves it; "時刻を変える" opens quick buttons.
 function SleepCard({
   sleep,
   sleepMessage,
+  nights,
   onSave,
 }: {
   sleep: Props['sleep'];
   sleepMessage: string | null;
+  nights: SleepNight[];
   onSave: Props['onSaveSleep'];
 }) {
   const styles = useStyles(makeStyles);
   const [open, setOpen] = useState(false);
   const [bed, setBed] = useState<Clock>({ h: 23, m: 0 });
   const [wake, setWake] = useState<Clock>({ h: 7, m: 0 });
+  const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Fill in the starting times once, unless the user has already changed them.
+  useEffect(() => {
+    if (touched) return;
+    let alive = true;
+    initialTimes(nights).then((t) => {
+      if (alive && t) {
+        setBed(t.bed);
+        setWake(t.wake);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [nights, touched]);
+
+  const changeBed = (c: Clock) => {
+    setTouched(true);
+    setBed(c);
+  };
+  const changeWake = (c: Clock) => {
+    setTouched(true);
+    setWake(c);
+  };
 
   async function save() {
     setBusy(true);
     const result = await onSave(bed, wake);
     setBusy(false);
     setError(result);
-    if (!result) setOpen(false);
+    if (!result) {
+      setOpen(false);
+      setSaved(true);
+      try {
+        await AsyncStorage.setItem(LAST_SLEEP_KEY, JSON.stringify({ bed, wake }));
+      } catch {
+        // Only a starting point for next time; saving it is not essential.
+      }
+    }
   }
+
+  const hours = hoursBetween(bed, wake);
+  const summary = `${clockText(bed)} 〜 ${clockText(wake)}（${hours.toFixed(1)}時間）`;
+  const saveButton = (
+    <Pressable onPress={save} disabled={busy} accessibilityRole="button" style={styles.cta}>
+      <Text style={styles.ctaText}>{busy ? '保存中…' : 'この時間で記録'}</Text>
+    </Pressable>
+  );
 
   return (
     <View style={styles.card}>
@@ -212,18 +284,25 @@ function SleepCard({
           <Text style={styles.big}>{sleep.hours.toFixed(1)} 時間</Text>
           <Text style={styles.sub}>
             {timeOf(sleep.start)} 〜 {timeOf(sleep.end)}
+            {saved ? '　記録しました' : ''}
           </Text>
         </>
       ) : (
-        <Text style={styles.sub}>{sleepMessage ?? '読み込み中…'}</Text>
+        <Text style={styles.sub}>
+          {saved ? '記録しました。' : (sleepMessage ?? '読み込み中…')}
+        </Text>
       )}
 
       {open ? (
         <View style={styles.form}>
-          <Text style={styles.sub}>就寝 {clockText(bed)}</Text>
-          <TimePicker value={bed} onChange={setBed} />
-          <Text style={styles.sub}>起床 {clockText(wake)}</Text>
-          <TimePicker value={wake} onChange={setWake} />
+          <QuickTime label="就寝" value={bed} onChange={changeBed} />
+          <QuickTime
+            label="起床"
+            value={wake}
+            onChange={changeWake}
+            extra={{ label: '今', onPress: () => changeWake(nowClock()) }}
+          />
+          <Text style={styles.sub}>{hours.toFixed(1)}時間 眠ったことになります</Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <View style={styles.formRow}>
             <Pressable onPress={() => setOpen(false)} accessibilityRole="button" style={styles.ghostBtn}>
@@ -234,10 +313,19 @@ function SleepCard({
             </Pressable>
           </View>
         </View>
-      ) : (
+      ) : sleep || saved ? (
         <Pressable onPress={() => setOpen(true)} accessibilityRole="button" hitSlop={6}>
           <Text style={styles.link}>手で入力</Text>
         </Pressable>
+      ) : (
+        <View style={styles.form}>
+          <Text style={styles.quickSummary}>{summary}</Text>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {saveButton}
+          <Pressable onPress={() => setOpen(true)} accessibilityRole="button" hitSlop={6}>
+            <Text style={styles.link}>時刻を変える</Text>
+          </Pressable>
+        </View>
       )}
     </View>
   );
@@ -443,7 +531,12 @@ export function TodayScreen(props: Props) {
         error={props.weightError}
       />
 
-      <SleepCard sleep={props.sleep} sleepMessage={props.sleepMessage} onSave={props.onSaveSleep} />
+      <SleepCard
+        sleep={props.sleep}
+        sleepMessage={props.sleepMessage}
+        nights={props.nights}
+        onSave={props.onSaveSleep}
+      />
     </View>
   );
 }
@@ -467,6 +560,7 @@ const makeStyles = (p: Palette) =>
     change: { fontSize: 14, fontWeight: '700', color: p.muted, fontVariant: ['tabular-nums'] },
     changeDown: { color: p.accent },
     form: { gap: 8 },
+    quickSummary: { fontSize: 18, fontWeight: '700', color: p.fg, fontVariant: ['tabular-nums'] },
     formRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
     cta: { backgroundColor: p.accent, borderRadius: 999, paddingVertical: 14, alignItems: 'center' },
     smallCta: { flex: 1, backgroundColor: p.accent, borderRadius: 999, paddingVertical: 12, alignItems: 'center' },
