@@ -1,0 +1,61 @@
+name: Android APK
+
+# Builds a standalone release APK (JS bundled, no dev server needed)
+# and uploads it as a workflow artifact.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, feat/ui-reorg]
+    paths-ignore: ['docs/**', '**/*.md']
+  pull_request:
+    paths-ignore: ['docs/**', '**/*.md']
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      # The release build type is signed with android/app/debug.keystore from the
+      # Expo template, the same key as a PC build. Its SHA must be registered in
+      # Firebase for Google login; print it so it can be checked.
+      - name: Show signing key fingerprint
+        run: keytool -list -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey | grep -E 'SHA1|SHA256'
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
+
+      - name: Name the APK
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk "out/pocket-health-${GITHUB_SHA::7}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pocket-health-apk
+          path: out/*.apk
+          retention-days: 30
