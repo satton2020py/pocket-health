@@ -230,6 +230,34 @@ function SleepRecords({
   );
 }
 
+// The 7-day steps chart, then one row per day with the newest first.
+function StepsRecords({ daily, stepGoal }: Pick<Props, 'daily' | 'stepGoal'>) {
+  const styles = useStyles(makeStyles);
+  return (
+    <>
+      <StepsChart
+        daily={daily}
+        stepGoal={stepGoal}
+        emptyMessage="歩数を読み込めていません。今日タブからHealth Connectを許可してください。"
+      />
+      {daily.length > 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>歩数の記録</Text>
+          {[...daily].reverse().map((d) => (
+            <View key={d.date.toISOString()} style={styles.row}>
+              <Text style={styles.rowDate}>{dayLabel(d.date)}</Text>
+              <View style={styles.rowRight}>
+                {d.steps >= stepGoal ? <Text style={styles.reached}>目標達成</Text> : null}
+                <Text style={styles.rowValue}>{d.steps.toLocaleString('ja-JP')}歩</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </>
+  );
+}
+
 // History and charts for weight, sleep and steps, switched with buttons at the top.
 export function RecordsScreen(props: Props) {
   const styles = useStyles(makeStyles);
@@ -261,11 +289,7 @@ export function RecordsScreen(props: Props) {
       ) : kind === 'sleep' ? (
         <SleepRecords nights={props.nights} sleepMessage={props.sleepMessage} sleepGoal={props.sleepGoal} />
       ) : (
-        <StepsChart
-          daily={props.daily}
-          stepGoal={props.stepGoal}
-          emptyMessage="歩数を読み込めていません。今日タブからHealth Connectを許可してください。"
-        />
+        <StepsRecords daily={props.daily} stepGoal={props.stepGoal} />
       )}
     </View>
   );
@@ -297,6 +321,7 @@ const makeStyles = (p: Palette) =>
     rowValue: { color: p.fg, fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
     diff: { color: p.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
     diffDown: { color: p.accent, fontWeight: '700' },
+    reached: { color: p.accent, fontSize: 12, fontWeight: '700' },
     month: { color: p.fg, fontSize: 14, fontWeight: '800', marginTop: 12 },
     editor: { gap: 8, paddingVertical: 10 },
     btnRow: { flexDirection: 'row', gap: 8 },
