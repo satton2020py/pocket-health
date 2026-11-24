@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Svg, { G, Line, Rect, Text as SvgText } from 'react-native-svg';
-import { type Palette, usePalette, useStyles } from './theme';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { type Palette, useStyles } from './theme';
 import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
 import { WeightChart } from './WeightChart';
 import { WeightInput } from './WeightInput';
@@ -9,6 +8,7 @@ import { DateTimePicker, dayLabel } from './pickers';
 import type { SleepNight } from './sleep';
 import type { DailySteps } from './healthConnect';
 import { StepsChart } from './StepsChart';
+import { WeekBarChart } from './WeekBarChart';
 import { bedtimeSpread, clockFromEvening } from './insights';
 
 type Props = {
@@ -155,17 +155,12 @@ function WeightRecords(props: Props) {
   );
 }
 
-const CHART_H = 140;
-const BAR_W = 22;
-
 function SleepRecords({
   nights,
   sleepMessage,
   sleepGoal: SLEEP_TARGET_HOURS,
 }: Pick<Props, 'nights' | 'sleepMessage' | 'sleepGoal'>) {
   const styles = useStyles(makeStyles);
-  const p = usePalette();
-  const { width: windowWidth } = useWindowDimensions();
 
   if (nights.length === 0) {
     return (
@@ -182,10 +177,7 @@ function SleepRecords({
     withData.length > 0 ? withData.reduce((s, n) => s + n.hours, 0) / withData.length : 0;
   const reached = nights.filter((n) => n.hours >= SLEEP_TARGET_HOURS).length;
   const spread = bedtimeSpread(nights);
-  const chartW = Math.max(240, windowWidth - 72);
   const chartMax = Math.max(SLEEP_TARGET_HOURS + 1, ...nights.map((n) => n.hours)) * 1.1;
-  const barY = (h: number) => CHART_H - (h / chartMax) * CHART_H;
-  const slot = chartW / nights.length;
 
   return (
     <>
@@ -194,59 +186,17 @@ function SleepRecords({
         <Text style={styles.sub}>
           平均 {average.toFixed(1)}時間 ／ {SLEEP_TARGET_HOURS}時間以上 {reached}/{nights.length}日
         </Text>
-        <Svg width={chartW} height={CHART_H + 26}>
-          <Line
-            x1={0}
-            x2={chartW}
-            y1={barY(SLEEP_TARGET_HOURS)}
-            y2={barY(SLEEP_TARGET_HOURS)}
-            stroke={p.accent}
-            strokeWidth={1.5}
-            strokeDasharray="3 4"
-          />
-          <SvgText x={chartW} y={barY(SLEEP_TARGET_HOURS) - 6} fontSize={11} fill={p.accent} textAnchor="end">
-            目安 {SLEEP_TARGET_HOURS}時間
-          </SvgText>
-          {nights.map((n, i) => {
-            const h = (n.hours / chartMax) * CHART_H;
-            const cx = i * slot + slot / 2;
-            const isToday = i === nights.length - 1;
-            return (
-              <G key={i}>
-                <Rect
-                  x={cx - BAR_W / 2}
-                  y={CHART_H - h}
-                  width={BAR_W}
-                  height={Math.max(h, 2)}
-                  rx={BAR_W / 2}
-                  fill={n.hours >= SLEEP_TARGET_HOURS ? p.accent : p.accentSoft}
-                />
-                {n.hours > 0 ? (
-                  <SvgText
-                    x={cx}
-                    y={Math.max(CHART_H - h, 12) - 6}
-                    fontSize={11}
-                    fontWeight="700"
-                    fill={p.fg}
-                    textAnchor="middle"
-                  >
-                    {n.hours.toFixed(1)}
-                  </SvgText>
-                ) : null}
-                <SvgText
-                  x={cx}
-                  y={CHART_H + 18}
-                  fontSize={12}
-                  fontWeight={isToday ? '800' : '400'}
-                  fill={isToday ? p.fg : p.muted}
-                  textAnchor="middle"
-                >
-                  {n.date.getDate()}
-                </SvgText>
-              </G>
-            );
-          })}
-        </Svg>
+        <WeekBarChart
+          bars={nights.map((n) => ({
+            date: n.date,
+            value: n.hours,
+            label: n.hours > 0 ? n.hours.toFixed(1) : null,
+            reached: n.hours >= SLEEP_TARGET_HOURS,
+          }))}
+          target={SLEEP_TARGET_HOURS}
+          targetLabel={`目安 ${SLEEP_TARGET_HOURS}時間`}
+          maxValue={chartMax}
+        />
       </View>
 
       {spread ? (
