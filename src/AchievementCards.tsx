@@ -66,7 +66,7 @@ export function MedalCard({
   const styles = useStyles(makeStyles);
   const pct = today.steps !== null && today.stepGoal > 0 ? Math.round((today.steps / today.stepGoal) * 100) : null;
   const nextStep =
-    pct === null ? null : pct < 100 ? '目標で銅' : pct < 125 ? '125%で銀' : pct < 150 ? '150%で金' : null;
+    pct === null ? null : pct < 80 ? '80%で銅' : pct < 100 ? '100%で銀' : pct < 120 ? '120%で金' : null;
   const lost = today.weekChangeKg !== null ? -today.weekChangeKg : null;
   const toNextKg = lost !== null ? (today.weightUnits + 1) * WEIGHT_STEP_KG - lost : null;
 
@@ -188,6 +188,7 @@ export function useCelebration(input: {
   weightUnits: number;
   bestStreak: number;
   weekId: string;
+  goalReachedKg: number | null;
   ready: boolean;
 }): { event: CelebrationEvent | null; close: () => void } {
   const [seen, setSeen] = useState<string[] | null>(null);
@@ -199,10 +200,10 @@ export function useCelebration(input: {
       .catch(() => setSeen([]));
   }, []);
 
-  const { stepMedal, sleepReached, weightUnits, bestStreak, weekId, ready } = input;
+  const { stepMedal, sleepReached, weightUnits, bestStreak, weekId, goalReachedKg, ready } = input;
   useEffect(() => {
     if (!ready || seen === null) return;
-    const fresh = celebrationEvents({ stepMedal, sleepReached, weightUnits, bestStreak, weekId }).filter(
+    const fresh = celebrationEvents({ stepMedal, sleepReached, weightUnits, bestStreak, weekId, goalReachedKg }).filter(
       (e) => !seen.includes(e.id),
     );
     if (fresh.length === 0) return;
@@ -210,54 +211,86 @@ export function useCelebration(input: {
     setSeen(next);
     setQueue((q) => [...q, ...fresh]);
     AsyncStorage.setItem(SEEN_KEY, JSON.stringify(next)).catch(() => {});
-  }, [stepMedal, sleepReached, weightUnits, bestStreak, weekId, ready, seen]);
+  }, [stepMedal, sleepReached, weightUnits, bestStreak, weekId, goalReachedKg, ready, seen]);
 
   const close = useCallback(() => setQueue((q) => q.slice(1)), []);
   return { event: queue[0] ?? null, close };
 }
 
 const CONFETTI_COLORS = ['#5E9C7A', '#7FB89A', '#D4A93C', '#E58A72', '#A3ABB0', '#F2C94C'];
-const PIECES = 28;
+const GRAND_COLORS = ['#D4A93C', '#F2C94C', '#FFE08A', '#5E9C7A', '#E58A72', '#FFFFFF'];
 
-// A short burst of falling paper over the whole screen with a message card.
-// Closes by itself after a few seconds, or on tap.
+// Falling paper over the whole screen with a message card. Closes by itself, or on tap.
+// The grand version (goal weight reached) has three times the paper in waves for longer,
+// a gold card that pulses, and a trophy.
 export function Celebration({ event, onClose }: { event: CelebrationEvent; onClose: () => void }) {
   const styles = useStyles(makeStyles);
   const { width, height } = useWindowDimensions();
   const fall = useRef(new Animated.Value(0)).current;
   const pop = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+  const grand = event.grand === true;
+  const count = grand ? 90 : 28;
+  const duration = grand ? 6500 : 2600;
 
-  // Fixed start points and spins for each piece, picked once.
+  // Fixed start points and spins for each piece, picked once. In the grand version the
+  // pieces start at different times, so the paper keeps coming in waves.
   const pieces = useMemo(
     () =>
-      Array.from({ length: PIECES }, (_, i) => ({
-        x: Math.random() * width,
-        drift: (Math.random() - 0.5) * 120,
-        delay: Math.random() * 0.25,
-        spin: (Math.random() < 0.5 ? -1 : 1) * (360 + Math.random() * 360),
-        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-        w: 6 + Math.random() * 6,
-        h: 10 + Math.random() * 8,
-      })),
-    [width],
+      Array.from({ length: count }, (_, i) => {
+        const delay = grand ? Math.random() * 0.65 : Math.random() * 0.25;
+        return {
+          x: Math.random() * width,
+          drift: (Math.random() - 0.5) * (grand ? 200 : 120),
+          delay,
+          end: grand ? Math.min(1, delay + 0.3 + Math.random() * 0.1) : 1,
+          spin: (Math.random() < 0.5 ? -1 : 1) * (360 + Math.random() * (grand ? 720 : 360)),
+          color: (grand ? GRAND_COLORS : CONFETTI_COLORS)[i % 6],
+          w: 6 + Math.random() * (grand ? 8 : 6),
+          h: 10 + Math.random() * (grand ? 12 : 8),
+        };
+      }),
+    [width, count, grand],
   );
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fall, { toValue: 1, duration: 2600, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.spring(pop, { toValue: 1, friction: 5, tension: 80, useNativeDriver: true }),
+      Animated.timing(fall, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true }),
+      Animated.spring(pop, { toValue: 1, friction: grand ? 4 : 5, tension: 80, useNativeDriver: true }),
     ]).start();
-    const t = setTimeout(onClose, 4500);
-    return () => clearTimeout(t);
-  }, [fall, pop, onClose]);
+    const loop = grand
+      ? Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulse, { toValue: 1, duration: 600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+            Animated.timing(pulse, { toValue: 0, duration: 600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+          ]),
+        )
+      : null;
+    loop?.start();
+    const t = setTimeout(onClose, grand ? 8000 : 4500);
+    return () => {
+      clearTimeout(t);
+      loop?.stop();
+    };
+  }, [fall, pop, pulse, onClose, grand, duration]);
+
+  const scale = Animated.multiply(
+    pop.interpolate({ inputRange: [0, 1], outputRange: [grand ? 0.4 : 0.7, 1] }),
+    pulse.interpolate({ inputRange: [0, 1], outputRange: [1, grand ? 1.06 : 1] }),
+  );
 
   return (
-    <Pressable style={styles.overlay} onPress={onClose} accessibilityRole="button" accessibilityLabel="閉じる">
+    <Pressable
+      style={[styles.overlay, grand && styles.overlayGrand]}
+      onPress={onClose}
+      accessibilityRole="button"
+      accessibilityLabel="閉じる"
+    >
       {pieces.map((p, i) => {
-        const start = p.delay;
         const translateY = fall.interpolate({
-          inputRange: [0, start, 1],
-          outputRange: [-40, -40, height + 40],
+          inputRange: p.end < 1 ? [0, p.delay, p.end, 1] : [0, p.delay, 1],
+          outputRange: p.end < 1 ? [-40, -40, height + 40, height + 40] : [-40, -40, height + 40],
+          easing: Easing.out(Easing.quad),
         });
         const translateX = fall.interpolate({ inputRange: [0, 1], outputRange: [0, p.drift] });
         const rotate = fall.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${p.spin}deg`] });
@@ -278,14 +311,15 @@ export function Celebration({ event, onClose }: { event: CelebrationEvent; onClo
           />
         );
       })}
-      <Animated.View
-        style={[
-          styles.popCard,
-          { opacity: pop, transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }] },
-        ]}
-      >
-        {event.medal ? <MedalDot medal={event.medal} size={72} /> : <Text style={styles.popIcon}>🎉</Text>}
-        <Text style={styles.popTitle}>{event.title}</Text>
+      <Animated.View style={[styles.popCard, grand && styles.popCardGrand, { opacity: pop, transform: [{ scale }] }]}>
+        {grand ? (
+          <Text style={styles.trophy}>🏆</Text>
+        ) : event.medal ? (
+          <MedalDot medal={event.medal} size={72} />
+        ) : (
+          <Text style={styles.popIcon}>🎉</Text>
+        )}
+        <Text style={[styles.popTitle, grand && styles.popTitleGrand]}>{event.title}</Text>
         <Text style={styles.popMessage}>{event.message}</Text>
         <Text style={styles.popHint}>タップで閉じる</Text>
       </Animated.View>
@@ -338,6 +372,10 @@ const makeStyles = (p: Palette) =>
       justifyContent: 'center',
       overflow: 'hidden',
     },
+    overlayGrand: { backgroundColor: 'rgba(0,0,0,0.45)' },
+    popCardGrand: { borderWidth: 3, borderColor: '#D4A93C', paddingVertical: 32 },
+    trophy: { fontSize: 72 },
+    popTitleGrand: { fontSize: 28, color: '#B8892A' },
     piece: { position: 'absolute', top: 0, borderRadius: 2 },
     popCard: {
       backgroundColor: p.surface,

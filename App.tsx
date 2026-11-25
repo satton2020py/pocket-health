@@ -15,7 +15,7 @@ import {
 import type { WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen, todayGoals, type StepsStatus } from './src/TodayScreen';
 import { Celebration, useCelebration } from './src/AchievementCards';
-import { streakSummary } from './src/achievements';
+import { streakSummary, weightGoalReached } from './src/achievements';
 import { weekKey } from './src/insights';
 import { DEFAULT_SLEEP_GOAL } from './src/GoalScreen';
 import { RecordsScreen } from './src/RecordsScreen';
@@ -62,6 +62,14 @@ const TABS: { key: Tab; label: string; Icon: ComponentType<{ color: string }> }[
   { key: 'goal', label: '目標', Icon: GoalIcon },
   { key: 'settings', label: '設定', Icon: SettingsIcon },
 ];
+
+// The goal weight, when the 7-day average has come down to it.
+function goalReachedKg(entries: WeightEntry[], goalKg: number | null): number | null {
+  if (entries.length === 0) return null;
+  const first = entries.reduce((a, b) => (a.recordedAt < b.recordedAt ? a : b));
+  const avg = weightTrend(entries)?.averageKg ?? null;
+  return weightGoalReached(first.kg, avg, goalKg) ? goalKg : null;
+}
 
 const byNewest = (list: WeightEntry[]) =>
   [...list].sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime());
@@ -132,6 +140,7 @@ function App() {
     weightUnits: goalsToday.weightUnits,
     bestStreak: streakSummary(entries).best,
     weekId: weekKey(new Date()),
+    goalReachedKg: goalReachedKg(entries, goalKg),
     ready: onboarded === true && stepsStatus !== 'loading',
   });
 

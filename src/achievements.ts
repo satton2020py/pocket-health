@@ -64,11 +64,25 @@ export const MEDAL_LABEL: Record<Exclude<Medal, null>, string> = {
   bronze: '銅',
 };
 
-// Steps: reaching the goal is bronze, 125% silver, 150% gold.
+// Steps: 80% of the goal is bronze, the goal itself silver, 120% gold.
+export const STEP_MEDAL_PCT = { bronze: 80, silver: 100, gold: 120 } as const;
+
 export function stepMedal(steps: number, goal: number): Medal {
-  if (goal <= 0 || steps < goal) return null;
-  const r = steps / goal;
-  return r >= 1.5 ? 'gold' : r >= 1.25 ? 'silver' : 'bronze';
+  if (goal <= 0) return null;
+  const pct = (steps / goal) * 100;
+  return pct >= STEP_MEDAL_PCT.gold
+    ? 'gold'
+    : pct >= STEP_MEDAL_PCT.silver
+      ? 'silver'
+      : pct >= STEP_MEDAL_PCT.bronze
+        ? 'bronze'
+        : null;
+}
+
+// The goal weight counts as reached when the 7-day average is at or below it, on the way
+// down from the first record (a goal set above the start is not a loss goal).
+export function weightGoalReached(firstKg: number | null, averageKg: number | null, goalKg: number | null): boolean {
+  return firstKg !== null && averageKg !== null && goalKg !== null && firstKg > goalKg && averageKg <= goalKg;
 }
 
 export const sleepReached = (hours: number | null | undefined, goal: number) =>
@@ -107,7 +121,14 @@ export function weekResults(
 }
 
 // Something to celebrate. Each id is shown once; day ids end with the date.
-export type CelebrationEvent = { id: string; title: string; message: string; medal?: Medal };
+export type CelebrationEvent = {
+  id: string;
+  title: string;
+  message: string;
+  medal?: Medal;
+  // The big one, for reaching the goal weight.
+  grand?: boolean;
+};
 
 // Everything worth a celebration right now, most important first.
 export function celebrationEvents(input: {
@@ -116,10 +137,20 @@ export function celebrationEvents(input: {
   weightUnits: number;
   bestStreak: number;
   weekId: string;
+  // The goal weight, when the 7-day average has reached it.
+  goalReachedKg: number | null;
   now?: Date;
 }): CelebrationEvent[] {
   const k = dayKey(input.now ?? new Date());
   const list: CelebrationEvent[] = [];
+  if (input.goalReachedKg !== null) {
+    list.push({
+      id: `goal-${input.goalReachedKg}:keep`,
+      title: '目標体重を達成！',
+      message: `7日間の平均が目標の ${input.goalReachedKg} kg に届きました。本当におめでとうございます！`,
+      grand: true,
+    });
+  }
   if (input.weightUnits > 0) {
     const kg = input.weightUnits * WEIGHT_STEP_KG;
     list.push({
@@ -140,11 +171,13 @@ export function celebrationEvents(input: {
     const m = input.stepMedal;
     list.push({
       id: `steps-${m}:${k}`,
-      title: m === 'bronze' ? '歩数の目標を達成！' : `歩数で${MEDAL_LABEL[m]}メダル！`,
+      title: m === 'silver' ? '歩数の目標を達成！' : `歩数で${MEDAL_LABEL[m]}メダル！`,
       message:
         m === 'bronze'
-          ? '今日の歩数が目標に届きました。'
-          : `今日は目標の${m === 'gold' ? '1.5' : '1.25'}倍歩きました。`,
+          ? `今日の歩数が目標の${STEP_MEDAL_PCT.bronze}%に届きました。`
+          : m === 'silver'
+            ? '今日の歩数が目標に届きました。銀メダルです。'
+            : `今日は目標の${STEP_MEDAL_PCT.gold}%歩きました。`,
       medal: m,
     });
   }
@@ -154,12 +187,12 @@ export function celebrationEvents(input: {
   return list;
 }
 
-// Ids for days long past can be dropped from storage; badge ids are kept.
+// Ids for days long past can be dropped from storage; badge and goal ids are kept.
 export function pruneSeen(ids: string[], now: Date = new Date()): string[] {
   const limit = now.getTime() - 14 * 24 * 60 * 60 * 1000;
   return ids.filter((id) => {
     const [kind, date] = id.split(':');
-    if (kind === 'badge') return true;
+    if (kind === 'badge' || date === 'keep') return true;
     const t = new Date(date).getTime();
     return Number.isFinite(t) && t >= limit;
   });
