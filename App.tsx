@@ -13,7 +13,7 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 import type { WeightEntry } from './src/weight';
-import { DEFAULT_STEP_GOAL, TodayScreen, todayGoals, type StepsStatus } from './src/TodayScreen';
+import { DEFAULT_STEP_GOAL, HISTORY_DAYS, TodayScreen, todayGoals, type StepsStatus } from './src/TodayScreen';
 import { Celebration, useCelebration } from './src/AchievementCards';
 import { streakSummary, weightGoalReached } from './src/achievements';
 import { weekKey } from './src/insights';
@@ -95,7 +95,12 @@ function App() {
 
   const [steps, setSteps] = useState(0);
   const [activity, setActivity] = useState({ distanceKm: 0, kcal: 0 });
-  const [daily, setDaily] = useState<DailySteps[]>([]);
+  // Steps for the last HISTORY_DAYS days, so the Today tab can go back to a past day.
+  // The charts and the week summary use the last 7 of them.
+  const [dailyAll, setDailyAll] = useState<DailySteps[]>([]);
+  const daily = dailyAll.slice(-7);
+  // How many days back the Today tab shows. 0 is today, so it moves on by itself at midnight.
+  const [dayOffset, setDayOffset] = useState(0);
   const [sources, setSources] = useState<StepSource[]>([]);
   const [stepSource, setStepSource] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -106,7 +111,8 @@ function App() {
   // The tabs share one scroll view, so it goes back to the top when the tab changes.
   const scrollRef = useRef<ScrollViewInstance>(null);
   const [sleep, setSleep] = useState<{ hours: number; start: Date; end: Date } | null>(null);
-  const [nights, setNights] = useState<SleepNight[]>([]);
+  const [nightsAll, setNightsAll] = useState<SleepNight[]>([]);
+  const nights = nightsAll.slice(-7);
   const [sleepMessage, setSleepMessage] = useState<string | null>(null);
   const [reminder, setReminder] = useState<Reminder>(DEFAULT_REMINDER);
   const [reminderNote, setReminderNote] = useState<string | null>(null);
@@ -307,11 +313,11 @@ function App() {
     syncFromHealthConnect(origin);
   }
 
-  // Reads last night's sleep and the last 7 nights. Shown separately, so a sleep problem
+  // Reads last night's sleep and the last HISTORY_DAYS nights. Shown separately, so a sleep problem
   // never hides the steps.
   async function syncSleep() {
-    const [r, history] = await Promise.all([readLastNightSleep(), readSleepHistory(7)]);
-    setNights(history.ok ? history.nights : []);
+    const [r, history] = await Promise.all([readLastNightSleep(), readSleepHistory(HISTORY_DAYS)]);
+    setNightsAll(history.ok ? history.nights : []);
     if (r.ok) {
       setSleep(r.night);
       setSleepMessage(r.night ? null : '昨夜の睡眠記録はありません。');
@@ -326,9 +332,16 @@ function App() {
   }
 
   // Saves a sleep time picked by the user to Health Connect, then shows it on the card.
+  // `day` is the morning the night ended on, or null for last night.
   // Returns an error message to show in the form, or null when saved.
-  async function saveManualSleep(bed: Clock, wake: Clock): Promise<string | null> {
-    const { start, end } = nightFrom(bed, wake);
+  async function saveManualSleep(bed: Clock, wake: Clock, day: Date | null): Promise<string | null> {
+    let base = new Date();
+    if (day) {
+      // The end of that day, so the wake-up time falls on that morning.
+      base = new Date(day);
+      base.setHours(23, 59, 59, 0);
+    }
+    const { start, end } = nightFrom(bed, wake, base);
     const error = await writeSleep(start, end);
     if (error) return error;
     await syncSleep();
@@ -451,7 +464,7 @@ function App() {
 
   async function readHealthConnect(preferred: string | null) {
     setSyncMessage('Health Connectから取得しています…');
-    const result = await readRecentSteps(7, preferred);
+    const result = await readRecentSteps(HISTORY_DAYS, preferred);
     setStepsStatus(
       result.ok
         ? 'ok'
@@ -462,7 +475,7 @@ function App() {
             : 'error',
     );
     if (result.ok) {
-      setDaily(result.daily);
+      setDailyAll(result.daily);
       setActivity(result.today);
       setSources(result.sources);
       setStepSource(result.chosen);
@@ -596,6 +609,10 @@ function App() {
             heightCm={heightCm}
             nights={nights}
             daily={daily}
+            dailyAll={dailyAll}
+            nightsAll={nightsAll}
+            dayOffset={dayOffset}
+            onChangeDay={setDayOffset}
             sleepGoal={sleepGoal}
             onAllowHealth={allowAndSync}
             activity={activity}

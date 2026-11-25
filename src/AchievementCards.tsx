@@ -54,14 +54,17 @@ export type TodayAchievements = {
 // Today's results on the Today tab, one row each: steps (a medal by how far past the
 // goal), last night's sleep, and this week's weight in 500 g steps. Below them, the
 // last 7 days of steps medals and sleep, and the record streak.
+// `day` is a past day being shown on the Today tab, or null for today.
 export function MedalCard({
   today,
   week,
   streak,
+  day = null,
 }: {
   today: TodayAchievements;
   week: DayResult[];
   streak: StreakSummary;
+  day?: Date | null;
 }) {
   const styles = useStyles(makeStyles);
   const pct = today.steps !== null && today.stepGoal > 0 ? Math.round((today.steps / today.stepGoal) * 100) : null;
@@ -72,7 +75,9 @@ export function MedalCard({
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>今日の達成</Text>
+      <Text style={styles.cardTitle}>
+        {day ? `${day.getMonth() + 1}/${day.getDate()}(${WEEKDAY[day.getDay()]})の達成` : '今日の達成'}
+      </Text>
 
       <View style={styles.row}>
         <MedalDot medal={today.stepMedal} size={40} />
@@ -90,8 +95,8 @@ export function MedalCard({
           <Text style={styles.rowTitle}>睡眠{today.sleepReached ? ' 達成' : ''}</Text>
           <Text style={styles.sub}>
             {today.sleepHours !== null
-              ? `昨夜 ${today.sleepHours.toFixed(1)}時間 ／ 目標 ${today.sleepGoal}時間`
-              : `昨夜の睡眠を記録すると判定します（目標 ${today.sleepGoal}時間）`}
+              ? `${day ? '前の夜' : '昨夜'} ${today.sleepHours.toFixed(1)}時間 ／ 目標 ${today.sleepGoal}時間`
+              : `${day ? '前の夜' : '昨夜'}の睡眠を記録すると判定します（目標 ${today.sleepGoal}時間）`}
           </Text>
         </View>
       </View>
@@ -127,7 +132,9 @@ export function MedalCard({
       ) : null}
 
       <Text style={styles.sub}>
-        {streak.current > 0 ? `体重を${streak.current}日連続で記録中` : '体重を記録すると連続記録が始まります'}
+        {streak.current > 0
+          ? `体重を${streak.current}日連続で記録${day ? '（この日まで）' : '中'}`
+          : '体重を記録すると連続記録が始まります'}
         {streak.next ? ` ／ あと${streak.next.left}日で${streak.next.days}日バッジ` : ''}
       </Text>
     </View>

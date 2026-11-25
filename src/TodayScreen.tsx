@@ -15,6 +15,22 @@ import { MedalCard, type TodayAchievements } from './AchievementCards';
 
 export const DEFAULT_STEP_GOAL = 8000;
 
+// How many days the Today tab can show, counting today. Steps and sleep are read for this many days.
+export const HISTORY_DAYS = 30;
+
+const startOfDay = (d: Date) => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+};
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+
+// The `days` items of a day-by-day list (oldest first) that end on `day`.
+function endingOn<T extends { date: Date }>(list: T[], day: Date, days: number): T[] {
+  const i = list.findIndex((x) => sameDay(x.date, day));
+  return i < 0 ? [] : list.slice(Math.max(0, i - days + 1), i + 1);
+}
+
 // Where the step numbers stand: read, still loading, not allowed, or not available on this phone.
 export type StepsStatus = 'loading' | 'ok' | 'denied' | 'unsupported' | 'error';
 
@@ -30,12 +46,19 @@ type Props = {
   heightCm: number | null;
   nights: SleepNight[];
   daily: DailySteps[];
+  // The same, for the last HISTORY_DAYS days, so a past day can be shown.
+  dailyAll: DailySteps[];
+  nightsAll: SleepNight[];
+  // Days back from today that the screen shows. 0 is today.
+  dayOffset: number;
+  onChangeDay: (offset: number) => void;
   sleepGoal: number;
   onAllowHealth: () => void;
   activity: { distanceKm: number; kcal: number };
   sleep: { hours: number; start: Date; end: Date } | null;
   sleepMessage: string | null;
-  onSaveSleep: (bed: Clock, wake: Clock) => Promise<string | null>;
+  // `day` is the morning the night ended on, or null for last night.
+  onSaveSleep: (bed: Clock, wake: Clock, day: Date | null) => Promise<string | null>;
 };
 
 const timeOf = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -55,6 +78,8 @@ export function sourceLabel(origin: string): string {
 
 // Records a weight from the Today screen. Starts from the last value, so most days only
 // need a tap or two on ±0.1 and then "記録する".
+// On a past day, the time starts on that day at the current time of day, and the card
+// also lists what was recorded that day.
 function WeightCard({
   entries,
   latest,
@@ -62,6 +87,8 @@ function WeightCard({
   heightCm,
   onAdd,
   error,
+  day,
+  dayEntries,
 }: {
   entries: WeightEntry[];
   heightCm: number | null;
@@ -69,10 +96,22 @@ function WeightCard({
   goalKg: number | null;
   onAdd: Props['onAddWeight'];
   error: string | null;
+  day: Date | null;
+  dayEntries: WeightEntry[];
 }) {
   const styles = useStyles(makeStyles);
   const [text, setText, resetText] = useWeightText(latest?.kg ?? null);
-  const [at, setAt] = useState<Date | null>(null);
+  const pastAt = () => {
+    if (!day) return null;
+    const now = new Date();
+    const d = new Date(day);
+    d.setHours(now.getHours(), now.getMinutes(), 0, 0);
+    return d;
+  };
+  const [at, setAt] = useState<Date | null>(pastAt);
+  // On a past day the time is always set, so the picker opens on its own.
+  const [picking, setPicking] = useState(false);
+  const showPicker = day ? picking : at !== null;
   const [inputError, setInputError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -87,7 +126,8 @@ function WeightCard({
     const ok = await onAdd(kg, at ?? new Date());
     setBusy(false);
     if (ok) {
-      setAt(null);
+      setAt(pastAt());
+      setPicking(false);
       resetText();
     }
   }
@@ -157,16 +197,26 @@ function WeightCard({
         fallbackKg={latest?.kg ?? 60}
       />
 
+      {day ? (
+        <Text style={styles.sub}>
+          この日の記録：
+          {dayEntries.length > 0
+            ? dayEntries.map((e) => `${formatWeight(e.kg)} kg（${timeOf(e.recordedAt)}）`).join('、')
+            : 'まだありません'}
+        </Text>
+      ) : null}
+
       <Pressable
-        onPress={() => setAt(at ? null : new Date())}
+        onPress={() => (day ? setPicking(!picking) : setAt(at ? null : new Date()))}
         accessibilityRole="button"
         hitSlop={6}
       >
         <Text style={styles.link}>
-          日時：{at ? `${dayLabel(at)} ${timeOf(at)}` : '今'}　{at ? '今に戻す' : '変える'}
+          日時：{at ? `${dayLabel(at)} ${timeOf(at)}` : '今'}　
+          {day ? (picking ? '閉じる' : '変える') : at ? '今に戻す' : '変える'}
         </Text>
       </Pressable>
-      {at ? <DateTimePicker value={at} onChange={setAt} /> : null}
+      {showPicker && at ? <DateTimePicker value={at} onChange={setAt} /> : null}
 
       {inputError || error ? <Text style={styles.error}>{inputError ?? error}</Text> : null}
       <Pressable
@@ -210,16 +260,19 @@ async function initialTimes(nights: SleepNight[]): Promise<{ bed: Clock; wake: C
 
 // Last night's sleep. With nothing recorded yet, the card offers last time's bedtime and
 // wake-up time so one tap on "この時間で記録" saves it; "時刻を変える" opens quick buttons.
+// On a past day it shows and saves the night that ended on that morning.
 function SleepCard({
   sleep,
   sleepMessage,
   nights,
   onSave,
+  day,
 }: {
   sleep: Props['sleep'];
   sleepMessage: string | null;
   nights: SleepNight[];
-  onSave: Props['onSaveSleep'];
+  onSave: (bed: Clock, wake: Clock) => Promise<string | null>;
+  day: Date | null;
 }) {
   const styles = useStyles(makeStyles);
   const [open, setOpen] = useState(false);
@@ -280,7 +333,7 @@ function SleepCard({
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>昨夜の睡眠</Text>
+      <Text style={styles.cardTitle}>{day ? `${dayLabel(day)}の朝までの睡眠` : '昨夜の睡眠'}</Text>
       {sleep ? (
         <>
           <Text style={styles.big}>{sleep.hours.toFixed(1)} 時間</Text>
@@ -413,7 +466,7 @@ function WeekReview({
   );
 }
 
-// Steps for today. When Health Connect is not allowed, it says so and offers the
+// Steps for the shown day. When Health Connect is not allowed, it says so and offers the
 // permission screen, instead of showing 0 steps as if the user had not walked.
 function StepsCard({
   steps,
@@ -524,49 +577,137 @@ export function todayGoals(p: {
 }
 
 // Three cards: steps, then the weight entry, then last night's sleep.
-// The 7-day charts are on the 記録 tab.
+// The 7-day charts are on the 記録 tab. The arrows by the title go back to a past day,
+// up to HISTORY_DAYS days, so a forgotten weight or night can be filled in and seen.
 export function TodayScreen(props: Props) {
   const styles = useStyles(makeStyles);
+  const offset = Math.min(Math.max(props.dayOffset, 0), HISTORY_DAYS - 1);
+  const isToday = offset === 0;
+  const day = startOfDay(new Date());
+  day.setDate(day.getDate() - offset);
+  const dayEnd = new Date(day);
+  dayEnd.setHours(23, 59, 59, 999);
+  const past = isToday ? null : day;
+
+  // Everything is shown as it stood at the end of the chosen day.
+  const entries = isToday ? props.entries : props.entries.filter((e) => e.recordedAt <= dayEnd);
+  const latest = isToday
+    ? props.latest
+    : entries.length > 0
+      ? entries.reduce((a, b) => (a.recordedAt > b.recordedAt ? a : b))
+      : null;
+  const dayEntries = props.entries
+    .filter((e) => sameDay(e.recordedAt, day))
+    .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+
+  const steps = isToday ? props.steps : (props.dailyAll.find((d) => sameDay(d.date, day))?.steps ?? 0);
+  // Distance and calories are read for today only.
+  const activity = isToday ? props.activity : { distanceKm: 0, kcal: 0 };
+
+  const night = props.nightsAll.find((n) => sameDay(n.date, day));
+  const sleep = isToday
+    ? props.sleep
+    : night && night.hours > 0 && night.start && night.end
+      ? { hours: night.hours, start: night.start, end: night.end }
+      : null;
+  const sleepMessage = isToday
+    ? props.sleepMessage
+    : props.nightsAll.length > 0
+      ? 'この日の睡眠記録はありません。'
+      : props.sleepMessage;
+
+  const week = weekResults(
+    isToday ? props.daily : endingOn(props.dailyAll, day, 7),
+    isToday ? props.nights : endingOn(props.nightsAll, day, 7),
+    props.stepGoal,
+    props.sleepGoal,
+  );
+
+  const go = (next: number) => props.onChangeDay(Math.min(Math.max(next, 0), HISTORY_DAYS - 1));
+  const canBack = offset < HISTORY_DAYS - 1;
+
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>今日 {dayLabel(new Date())}</Text>
+      <View style={styles.dayRow}>
+        <Pressable
+          onPress={() => go(offset + 1)}
+          disabled={!canBack}
+          accessibilityRole="button"
+          accessibilityLabel="前の日"
+          hitSlop={6}
+          style={[styles.dayArrow, !canBack && styles.disabled]}
+        >
+          <Text style={styles.dayArrowText}>‹</Text>
+        </Pressable>
+        <Text style={[styles.title, styles.dayTitle]}>
+          {isToday ? `今日 ${dayLabel(day)}` : dayLabel(day)}
+        </Text>
+        <Pressable
+          onPress={() => go(offset - 1)}
+          disabled={isToday}
+          accessibilityRole="button"
+          accessibilityLabel="次の日"
+          hitSlop={6}
+          style={[styles.dayArrow, isToday && styles.disabled]}
+        >
+          <Text style={styles.dayArrowText}>›</Text>
+        </Pressable>
+      </View>
+      {!isToday ? (
+        <View style={styles.pastBar}>
+          <Text style={[styles.sub, styles.flex]}>
+            {offset === 1 ? '昨日' : `${offset}日前`}の記録を見ています。体重と睡眠はこの日の分として記録されます。
+          </Text>
+          <Pressable onPress={() => go(0)} accessibilityRole="button" hitSlop={6}>
+            <Text style={styles.link}>今日に戻る</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <StepsCard
-        steps={props.steps}
+        steps={steps}
         stepGoal={props.stepGoal}
         status={props.stepsStatus}
-        activity={props.activity}
+        activity={activity}
         onAllow={props.onAllowHealth}
       />
 
       <MedalCard
-        today={todayGoals(props)}
-        week={weekResults(props.daily, props.nights, props.stepGoal, props.sleepGoal)}
-        streak={streakSummary(props.entries)}
+        today={todayGoals({ ...props, entries, steps, sleep })}
+        week={week}
+        streak={streakSummary(entries, isToday ? new Date() : dayEnd)}
+        day={past}
       />
 
-      <WeekReview
-        entries={props.entries}
-        daily={props.daily}
-        nights={props.nights}
-        stepGoal={props.stepGoal}
-        sleepGoal={props.sleepGoal}
-      />
+      {isToday ? (
+        <WeekReview
+          entries={props.entries}
+          daily={props.daily}
+          nights={props.nights}
+          stepGoal={props.stepGoal}
+          sleepGoal={props.sleepGoal}
+        />
+      ) : null}
 
       <WeightCard
+        key={`w-${day.toDateString()}`}
         heightCm={props.heightCm}
-        entries={props.entries}
-        latest={props.latest}
+        entries={entries}
+        latest={latest}
         goalKg={props.goalKg}
         onAdd={props.onAddWeight}
         error={props.weightError}
+        day={past}
+        dayEntries={dayEntries}
       />
 
       <SleepCard
-        sleep={props.sleep}
-        sleepMessage={props.sleepMessage}
-        nights={props.nights}
-        onSave={props.onSaveSleep}
+        key={`s-${day.toDateString()}`}
+        sleep={sleep}
+        sleepMessage={sleepMessage}
+        nights={props.nightsAll}
+        onSave={(bed, wake) => props.onSaveSleep(bed, wake, past)}
+        day={past}
       />
     </View>
   );
@@ -575,6 +716,28 @@ export function TodayScreen(props: Props) {
 const makeStyles = (p: Palette) =>
   StyleSheet.create({
     wrap: { gap: 16 },
+    flex: { flex: 1 },
+    dayRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    dayTitle: { flex: 1, textAlign: 'center' },
+    dayArrow: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: p.surface,
+    },
+    dayArrowText: { color: p.accent, fontSize: 26, fontWeight: '800', lineHeight: 30 },
+    disabled: { opacity: 0.3 },
+    pastBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: p.surface,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
     title: { fontSize: 22, fontWeight: '800', color: p.fg },
     card: { backgroundColor: p.surface, borderRadius: 16, padding: 16, gap: 10 },
     center: { alignItems: 'center' },
