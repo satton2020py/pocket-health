@@ -10,6 +10,8 @@ import { weightTrend } from './trend';
 import { bmi, bmiLabel, milestones, recordStreak, weekKey } from './insights';
 import type { DailySteps } from './healthConnect';
 import type { SleepNight } from './sleep';
+import { sleepReached, stepMedal, streakSummary, weekResults, weightUnits } from './achievements';
+import { MedalCard, type TodayAchievements } from './AchievementCards';
 
 export const DEFAULT_STEP_GOAL = 8000;
 
@@ -498,6 +500,29 @@ function StepsCard({
 
 const RING = 128;
 
+// Today's steps medal, last night's sleep, and this week's weight change in 500 g steps.
+export function todayGoals(p: {
+  steps: number;
+  stepGoal: number;
+  stepsStatus: StepsStatus;
+  sleep: { hours: number } | null;
+  sleepGoal: number;
+  entries: WeightEntry[];
+}): TodayAchievements {
+  const change = weightTrend(p.entries)?.weekChangeKg ?? null;
+  const known = p.stepsStatus === 'ok';
+  return {
+    steps: known ? p.steps : null,
+    stepGoal: p.stepGoal,
+    stepMedal: known ? stepMedal(p.steps, p.stepGoal) : null,
+    sleepHours: p.sleep?.hours ?? null,
+    sleepGoal: p.sleepGoal,
+    sleepReached: sleepReached(p.sleep?.hours, p.sleepGoal),
+    weekChangeKg: change,
+    weightUnits: weightUnits(change),
+  };
+}
+
 // Three cards: steps, then the weight entry, then last night's sleep.
 // The 7-day charts are on the 記録 tab.
 export function TodayScreen(props: Props) {
@@ -512,6 +537,12 @@ export function TodayScreen(props: Props) {
         status={props.stepsStatus}
         activity={props.activity}
         onAllow={props.onAllowHealth}
+      />
+
+      <MedalCard
+        today={todayGoals(props)}
+        week={weekResults(props.daily, props.nights, props.stepGoal, props.sleepGoal)}
+        streak={streakSummary(props.entries)}
       />
 
       <WeekReview
