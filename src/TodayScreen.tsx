@@ -10,8 +10,8 @@ import { weightTrend } from './trend';
 import { bmi, bmiLabel, milestones, recordStreak, weekKey } from './insights';
 import type { DailySteps } from './healthConnect';
 import type { SleepNight } from './sleep';
-import { streakSummary, weekMedals, weighedOn, type DayGoals } from './achievements';
-import { MedalCard } from './AchievementCards';
+import { sleepReached, stepMedal, streakSummary, weekResults, weightUnits } from './achievements';
+import { MedalCard, type TodayAchievements } from './AchievementCards';
 
 export const DEFAULT_STEP_GOAL = 8000;
 
@@ -500,7 +500,7 @@ function StepsCard({
 
 const RING = 128;
 
-// Which of today's three goals are met: steps, last night's sleep, and a weight record.
+// Today's steps medal, last night's sleep, and this week's weight change in 500 g steps.
 export function todayGoals(p: {
   steps: number;
   stepGoal: number;
@@ -508,11 +508,18 @@ export function todayGoals(p: {
   sleep: { hours: number } | null;
   sleepGoal: number;
   entries: WeightEntry[];
-}): DayGoals {
+}): TodayAchievements {
+  const change = weightTrend(p.entries)?.weekChangeKg ?? null;
+  const known = p.stepsStatus === 'ok';
   return {
-    steps: p.stepsStatus === 'ok' && p.steps >= p.stepGoal,
-    sleep: p.sleep !== null && p.sleep.hours >= p.sleepGoal,
-    weight: weighedOn(p.entries, new Date()),
+    steps: known ? p.steps : null,
+    stepGoal: p.stepGoal,
+    stepMedal: known ? stepMedal(p.steps, p.stepGoal) : null,
+    sleepHours: p.sleep?.hours ?? null,
+    sleepGoal: p.sleepGoal,
+    sleepReached: sleepReached(p.sleep?.hours, p.sleepGoal),
+    weekChangeKg: change,
+    weightUnits: weightUnits(change),
   };
 }
 
@@ -534,7 +541,7 @@ export function TodayScreen(props: Props) {
 
       <MedalCard
         today={todayGoals(props)}
-        week={weekMedals(props.daily, props.nights, props.entries, props.stepGoal, props.sleepGoal)}
+        week={weekResults(props.daily, props.nights, props.stepGoal, props.sleepGoal)}
         streak={streakSummary(props.entries)}
       />
 

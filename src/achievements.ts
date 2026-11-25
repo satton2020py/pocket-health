@@ -54,16 +54,9 @@ export function streakSummary(entries: Dated[], now: Date = new Date()): StreakS
   };
 }
 
-// A day's medal from how many of the three daily goals were met:
-// steps goal, sleep goal, and a weight record. 3 is gold, 2 silver, 1 bronze.
+// Steps and sleep are judged day by day, each on its own. Weight is judged by the week,
+// since a weigh-in cannot beat the goal every day.
 export type Medal = 'gold' | 'silver' | 'bronze' | null;
-
-export type DayGoals = { steps: boolean; sleep: boolean; weight: boolean };
-
-export function medalFor(g: DayGoals): Medal {
-  const n = Number(g.steps) + Number(g.sleep) + Number(g.weight);
-  return n === 3 ? 'gold' : n === 2 ? 'silver' : n === 1 ? 'bronze' : null;
-}
 
 export const MEDAL_LABEL: Record<Exclude<Medal, null>, string> = {
   gold: '金',
@@ -71,51 +64,68 @@ export const MEDAL_LABEL: Record<Exclude<Medal, null>, string> = {
   bronze: '銅',
 };
 
+// Steps: reaching the goal is bronze, 125% silver, 150% gold.
+export function stepMedal(steps: number, goal: number): Medal {
+  if (goal <= 0 || steps < goal) return null;
+  const r = steps / goal;
+  return r >= 1.5 ? 'gold' : r >= 1.25 ? 'silver' : 'bronze';
+}
+
+export const sleepReached = (hours: number | null | undefined, goal: number) =>
+  hours !== null && hours !== undefined && hours > 0 && hours >= goal;
+
+export const WEIGHT_STEP_KG = 0.5;
+
+// How many 500 g steps the 7-day average is below the week before. 0 when it did not go down.
+export function weightUnits(weekChangeKg: number | null): number {
+  if (weekChangeKg === null || weekChangeKg >= 0) return 0;
+  // A little slack so 0.4999 from rounding still counts as 500 g.
+  return Math.floor((-weekChangeKg + 1e-6) / WEIGHT_STEP_KG);
+}
+
 export function weighedOn(entries: Dated[], day: Date): boolean {
   const k = dayKey(day);
   return entries.some((e) => dayKey(e.recordedAt) === k);
 }
 
-export type DayMedal = { date: Date; goals: DayGoals; medal: Medal };
+export type DayResult = { date: Date; steps: Medal; sleep: boolean };
 
-// One medal per day for the days in `daily` (oldest first). Sleep is filed under the
-// morning the night ended, as on the 記録 tab.
-export function weekMedals(
+// Steps medal and sleep result for each day in `daily` (oldest first). Sleep is filed
+// under the morning the night ended, as on the 記録 tab.
+export function weekResults(
   daily: { date: Date; steps: number }[],
   nights: { date: Date; hours: number }[],
-  entries: Dated[],
   stepGoal: number,
   sleepGoal: number,
-): DayMedal[] {
+): DayResult[] {
   const sleepByDay = new Map(nights.map((n) => [dayKey(n.date), n.hours]));
-  return daily.map((d) => {
-    const goals = {
-      steps: d.steps >= stepGoal,
-      sleep: (sleepByDay.get(dayKey(d.date)) ?? 0) >= sleepGoal,
-      weight: weighedOn(entries, d.date),
-    };
-    return { date: d.date, goals, medal: medalFor(goals) };
-  });
+  return daily.map((d) => ({
+    date: d.date,
+    steps: stepMedal(d.steps, stepGoal),
+    sleep: sleepReached(sleepByDay.get(dayKey(d.date)), sleepGoal),
+  }));
 }
 
-// Something to celebrate. Each id is shown once; day ids carry the date.
+// Something to celebrate. Each id is shown once; day ids end with the date.
 export type CelebrationEvent = { id: string; title: string; message: string; medal?: Medal };
 
 // Everything worth a celebration right now, most important first.
 export function celebrationEvents(input: {
-  today: DayGoals;
-  stepsKnown: boolean;
+  stepMedal: Medal;
+  sleepReached: boolean;
+  weightUnits: number;
   bestStreak: number;
+  weekId: string;
   now?: Date;
 }): CelebrationEvent[] {
   const k = dayKey(input.now ?? new Date());
   const list: CelebrationEvent[] = [];
-  if (medalFor(input.today) === 'gold') {
+  if (input.weightUnits > 0) {
+    const kg = input.weightUnits * WEIGHT_STEP_KG;
     list.push({
-      id: `gold:${k}`,
-      title: '今日は金メダル！',
-      message: '歩数・睡眠・体重の3つをすべて達成しました。',
-      medal: 'gold',
+      id: `weight${input.weightUnits}:${input.weekId}`,
+      title: `1週間で ${kg.toFixed(1)} kg 減！`,
+      message: '7日間の平均が、前の週より減りました。',
     });
   }
   const badge = [...STREAK_BADGES].reverse().find((n) => input.bestStreak >= n);
@@ -126,10 +136,19 @@ export function celebrationEvents(input: {
       message: `${badge}日続けて体重を記録しました。この調子です。`,
     });
   }
-  if (input.stepsKnown && input.today.steps) {
-    list.push({ id: `steps:${k}`, title: '歩数の目標を達成！', message: '今日の歩数が目標に届きました。' });
+  if (input.stepMedal) {
+    const m = input.stepMedal;
+    list.push({
+      id: `steps-${m}:${k}`,
+      title: m === 'bronze' ? '歩数の目標を達成！' : `歩数で${MEDAL_LABEL[m]}メダル！`,
+      message:
+        m === 'bronze'
+          ? '今日の歩数が目標に届きました。'
+          : `今日は目標の${m === 'gold' ? '1.5' : '1.25'}倍歩きました。`,
+      medal: m,
+    });
   }
-  if (input.today.sleep) {
+  if (input.sleepReached) {
     list.push({ id: `sleep:${k}`, title: '睡眠の目標を達成！', message: '昨夜は目標の時間しっかり眠れました。' });
   }
   return list;
@@ -139,9 +158,9 @@ export function celebrationEvents(input: {
 export function pruneSeen(ids: string[], now: Date = new Date()): string[] {
   const limit = now.getTime() - 14 * 24 * 60 * 60 * 1000;
   return ids.filter((id) => {
-    const [kind, ...rest] = id.split(':');
+    const [kind, date] = id.split(':');
     if (kind === 'badge') return true;
-    const t = new Date(rest.join(':')).getTime();
+    const t = new Date(date).getTime();
     return Number.isFinite(t) && t >= limit;
   });
 }

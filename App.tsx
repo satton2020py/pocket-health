@@ -16,6 +16,7 @@ import type { WeightEntry } from './src/weight';
 import { DEFAULT_STEP_GOAL, TodayScreen, todayGoals, type StepsStatus } from './src/TodayScreen';
 import { Celebration, useCelebration } from './src/AchievementCards';
 import { streakSummary } from './src/achievements';
+import { weekKey } from './src/insights';
 import { DEFAULT_SLEEP_GOAL } from './src/GoalScreen';
 import { RecordsScreen } from './src/RecordsScreen';
 import { GoalScreen } from './src/GoalScreen';
@@ -123,14 +124,17 @@ function App() {
       ? entries.reduce((a, b) => (a.recordedAt > b.recordedAt ? a : b))
       : null;
 
-  // Celebrates a goal reached today or a new streak badge, once each.
+  // Celebrates steps and sleep goals each day, each 500 g down in a week, and new streak badges, once each.
   const goalsToday = todayGoals({ steps, stepGoal, stepsStatus, sleep, sleepGoal, entries });
   const celebration = useCelebration({
-    today: goalsToday,
-    stepsKnown: stepsStatus === 'ok',
+    stepMedal: goalsToday.stepMedal,
+    sleepReached: goalsToday.sleepReached,
+    weightUnits: goalsToday.weightUnits,
     bestStreak: streakSummary(entries).best,
+    weekId: weekKey(new Date()),
     ready: onboarded === true && stepsStatus !== 'loading',
   });
+
 
   useEffect(() => onUserChanged(setUser), []);
 
@@ -661,7 +665,9 @@ function App() {
         })}
       </View>
 
-      {celebration.event ? <Celebration event={celebration.event} onClose={celebration.close} /> : null}
+      {celebration.event ? (
+        <Celebration key={celebration.event.id} event={celebration.event} onClose={celebration.close} />
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
