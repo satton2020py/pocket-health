@@ -5,6 +5,8 @@ import { formatWeight, parseWeightInput, type WeightEntry } from './weight';
 import { forecastGoal, weightTrend } from './trend';
 import { WeightInput } from './WeightInput';
 import { bmi, bmiLabel, milestones } from './insights';
+import { streakSummary } from './achievements';
+import { BadgeShelf } from './AchievementCards';
 
 type Props = {
   goalKg: number | null;
@@ -182,6 +184,8 @@ export function GoalScreen({
           </Pressable>
         ) : null}
       </View>
+
+      <BadgeShelf streak={streakSummary(entries)} />
 
       <View style={styles.card}>
         <Text style={styles.label}>1日の歩数目標</Text>

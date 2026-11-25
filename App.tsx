@@ -13,7 +13,9 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 import type { WeightEntry } from './src/weight';
-import { DEFAULT_STEP_GOAL, TodayScreen, type StepsStatus } from './src/TodayScreen';
+import { DEFAULT_STEP_GOAL, TodayScreen, todayGoals, type StepsStatus } from './src/TodayScreen';
+import { Celebration, useCelebration } from './src/AchievementCards';
+import { streakSummary } from './src/achievements';
 import { DEFAULT_SLEEP_GOAL } from './src/GoalScreen';
 import { RecordsScreen } from './src/RecordsScreen';
 import { GoalScreen } from './src/GoalScreen';
@@ -120,6 +122,15 @@ function App() {
     entries.length > 0
       ? entries.reduce((a, b) => (a.recordedAt > b.recordedAt ? a : b))
       : null;
+
+  // Celebrates a goal reached today or a new streak badge, once each.
+  const goalsToday = todayGoals({ steps, stepGoal, stepsStatus, sleep, sleepGoal, entries });
+  const celebration = useCelebration({
+    today: goalsToday,
+    stepsKnown: stepsStatus === 'ok',
+    bestStreak: streakSummary(entries).best,
+    ready: onboarded === true && stepsStatus !== 'loading',
+  });
 
   useEffect(() => onUserChanged(setUser), []);
 
@@ -649,6 +660,8 @@ function App() {
           );
         })}
       </View>
+
+      {celebration.event ? <Celebration event={celebration.event} onClose={celebration.close} /> : null}
     </KeyboardAvoidingView>
   );
 }
